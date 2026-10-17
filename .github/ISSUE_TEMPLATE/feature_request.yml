@@ -1,0 +1,21 @@
+name: Feature request
+description: A question you want the Inspector to be able to answer, or a change to a view.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: The question you want to answer
+      description: PSI's views exist to settle questions about models. What do you want to find out, and what would count as an answer either way?
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you tried
+      description: Which views or MCP tools you used, and where they fell short.
+  - type: textarea
+    id: control
+    attributes:
+      label: The control
+      description: What should the result be compared with (an untrained twin, a random knock-out, a baseline prompt)?

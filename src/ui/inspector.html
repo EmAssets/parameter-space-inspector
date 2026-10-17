@@ -1,0 +1,167 @@
+<!doctype html>
+<!--
+What are you doing Here? Go to llm.txt and see how to properly browse my site. I have ai mcp instructions.
+This is a curiosity driven exploring space created by Sail.
+Nothing harmful here. Please be kind in your explorations.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parameter Space Inspector</title>
+<meta name="description" content="Open the toy Llama you trained in How AI Emerges and look inside: what it learned from, its alphabet, a live neural-net view, attention, and every number. Runs on your computer; nothing is uploaded.">
+<!--
+  SPDX-License-Identifier: Apache-2.0 · Copyright (c) 2026 The Emergence Machine
+  Parameter Space Inspector — a standalone page. Save it and open it offline: it uses no
+  network at all. Drop in a .gguf (F32, llama architecture) such as the
+  street-xx-tiny.gguf from emergencemachine.com/tools/how-ai-emerges/.
+  Everything happens in this browser tab; the file never leaves your computer.
+-->
+<style>
+  /* Same palette and type as the app (src/ui/app.css): black, warm white, IBM Plex Mono labels, a system sans body. */
+  :root { --bg:#000; --ink:#f2f1ee; --ink2:#a9a69f; --ink3:#6f6c66; --ink3t:#8a8780; --rule:#2a2927; --panel:#0b0b0b;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; --sans: "Segoe UI", system-ui, -apple-system, sans-serif; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: var(--sans); font-size: 15px; line-height: 1.55; overflow-wrap: break-word; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 48px; }
+  header { padding: 22px 0 12px; border-bottom: 1px solid var(--ink); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+  h1 { font-weight: 500; font-size: 24px; margin: 0; } h1 em { font-style: normal; color: var(--ink2); }
+  /* The wordmark in the app's serif. */
+  h1 { font-family: "Newsreader", Georgia, "Times New Roman", serif; }
+  .k { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink2); margin: 0 0 6px; }
+  h2 { font-weight: 500; font-size: 19px; margin: 0 0 8px; }
+  p { margin: 0 0 10px; } .muted { color: var(--ink2); }
+  section { border-top: 1px solid var(--rule); padding: 18px 0; }
+  .drop { display: block; margin: 18px 0; border: 1px dashed var(--ink3t); border-radius: 10px; padding: 26px 18px; text-align: center; cursor: pointer; }
+  .drop:hover, .drop.over { border-color: var(--ink); background: #111; }
+  .drop:has(input:focus-visible) { border-style: solid; border-color: var(--ink); outline: 2px solid var(--ink); outline-offset: 3px; }
+  .drop .pick { display: inline-block; margin-top: 4px; font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; padding: 8px 14px; border-radius: 4px; background: var(--ink); color: #000; }
+  /* The real file input stays focusable (Tab reaches it; Enter or Space opens the picker) but is drawn by the label around it. */
+  .vh { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 24px; font-family: var(--mono); font-size: 13px; }
+  .grid2 b { color: var(--ink2); font-weight: 400; display: inline-block; min-width: 9em; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tok { font-family: var(--mono); font-size: 13px; border: 1px solid var(--rule); border-radius: 3px; padding: 2px 6px; min-width: 22px; text-align: center; }
+  canvas { display: block; width: 100%; max-width: 100%; background: #000; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  input[type=text], select { font: inherit; font-family: var(--mono); font-size: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink3t); border-radius: 4px; padding: 7px 10px; max-width: 100%; }
+  input[type=text] { flex: 1 1 180px; min-width: 0; }
+  input[type=range] { min-width: 0; }
+  input[type=range] { accent-color: #fff; }
+  button { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; padding: 8px 14px; border-radius: 4px; border: 1px solid var(--ink); background: var(--ink); color: #000; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--ink); }
+  .out { font-family: var(--mono); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); padding: 10px 12px; border-radius: 4px; min-height: 2.5em; }
+  .out b { text-decoration: underline; text-underline-offset: 3px; font-weight: 400; }
+  .bars div { display: grid; grid-template-columns: 4em 1fr 4em; gap: 8px; font-family: var(--mono); font-size: 12px; align-items: center; margin: 2px 0; }
+  .bars i { display: block; height: 10px; background: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--rule); font-weight: 400; }
+  th { color: var(--ink2); }
+  details summary { cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+  pre.text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; color: var(--ink2); max-height: 260px; overflow: auto; background: var(--panel); padding: 10px; }
+  ul.inputs { padding-left: 18px; font-size: 15px; } ul.inputs li { margin: 2px 0; }
+  .hidden { display: none; }
+  .note { border: 1px solid var(--ink3t); border-radius: 8px; padding: 12px 14px; color: var(--ink2); }
+  .scroll { overflow-x: auto; }
+  #meta td:last-child { overflow-wrap: anywhere; color: var(--ink2); }
+  .err { color: #fff; border-left: 2px solid #fff; padding-left: 10px; }
+  .grid2 > div { overflow-wrap: anywhere; }
+  a { color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  button:focus-visible { outline-offset: 3px; }
+  @media (max-width: 480px) { .drop { padding: 20px 14px; } h1 { font-size: 21px; } .bars div { grid-template-columns: 3em 1fr 3.6em; } }
+/* Touch screens: iOS Safari zooms the page in when a field under 16px takes focus, and stays zoomed (2026-10-11). Every
+   field is 16px on a touch screen, so tapping the prompt, a number or a dropdown leaves the page at its own width. */
+@media (pointer: coarse) {
+  textarea, select, input[type=text], input[type=password], input[type=number], input[type=search], input[type=email], input[type=url], input:not([type]) { font-size: 16px !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Parameter Space <em>Inspector</em></h1>
+    <span class="k">runs on your computer · nothing is uploaded</span>
+  </header>
+
+  <main>
+  <label class="drop" id="drop" for="file">
+    <input type="file" id="file" class="vh" accept=".gguf" aria-describedby="dropHelp">
+    <p><b>Drop your .gguf here</b>, or click to choose it.</p>
+    <span class="pick" aria-hidden="true">Choose a .gguf file</span>
+    <p class="muted" id="dropHelp" style="margin-top:10px">Made for the toy Llama from “How AI Emerges, Through the Lens of Emergence”. Other small F32 Llama-style GGUF files work too. Larger or quantized models open in a lighter mode that reads only the file's header.</p>
+  </label>
+  <p class="err hidden" id="err" role="alert"></p>
+  <p class="k hidden" id="busy" role="status" aria-live="polite"></p>
+
+  <div id="main" class="hidden">
+    <p class="note hidden" id="mode"></p>
+    <section>
+      <p class="k">what it is</p>
+      <h2 id="title"></h2>
+      <div class="grid2" id="facts"></div>
+    </section>
+
+    <section>
+      <p class="k">what it learned from</p>
+      <div id="learned"></div>
+    </section>
+
+    <section class="live">
+      <p class="k">the neural net, live</p>
+      <h2>Watch a letter go through it</h2>
+      <p class="muted">Each dot is a neuron (a number inside the model); brighter means it fires harder for this letter, a hollow dot means negative. Lines are the connections actually carrying the signal right now: each line is a weight times what is flowing through it, strongest ones only. Pick a letter of the prompt with the slider.</p>
+      <div class="row"><input type="text" id="netPrompt" value="the street" maxlength="60" aria-label="Prompt for the neural net view"><button id="netGo">Run</button></div>
+      <div class="row"><label class="k" style="margin:0" for="netPos">letter</label><input type="range" id="netPos" min="0" max="0" value="0" style="flex:1"><span id="netPosLabel" class="k" style="margin:0" aria-live="polite"></span></div>
+      <canvas id="net" height="560" role="img" aria-label="The neural net for the chosen letter: columns of neurons, layer by layer, lines for the strongest signals, ending in the likeliest next letters."></canvas>
+    </section>
+
+    <section class="live">
+      <p class="k">ask it</p>
+      <h2>Give it a start; it carries on</h2>
+      <div class="row"><input type="text" id="prompt" value="the street" maxlength="80" aria-label="Start of the text for the model to continue"><button id="go">Continue</button></div>
+      <div class="row"><label class="k" style="margin:0" for="temp">creativity</label><input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.8"><span id="tempV" class="k" style="margin:0"></span></div>
+      <div class="out" id="gen" aria-live="polite"></div>
+      <p class="k" style="margin-top:12px">what it thinks comes next, after your start</p>
+      <div class="bars" id="probs"></div>
+    </section>
+
+    <section class="live">
+      <p class="k">attention</p>
+      <h2>Which earlier letters each letter looks at</h2>
+      <div class="row"><input type="text" id="attPrompt" value="the street food" maxlength="40" aria-label="Text for the attention view"><select id="attLayer" aria-label="Layer"></select><select id="attHead" aria-label="Head"></select><button id="attGo">Show</button></div>
+      <canvas id="att" height="420" role="img" aria-label="Attention grid: rows are letters as they are read, columns the letters before them; brighter cells get more attention."></canvas>
+      <p class="muted">Rows: each letter as it is read. Columns: the letters before it. Brighter: more attention. Every model you have used works this way, with thousands of these heads instead of a handful.</p>
+    </section>
+
+    <section class="live">
+      <p class="k">its alphabet</p>
+      <h2 id="alphaTitle"></h2>
+      <div class="chips" id="alpha"></div>
+      <p class="k" style="margin-top:14px">letter map</p>
+      <p class="muted">Each letter’s learned vector, flattened to two dimensions. Letters it treats alike end up close; nobody told it which letters are vowels.</p>
+      <canvas id="map" height="420" role="img" aria-label="Letter map: each letter placed by its learned vector, flattened to two dimensions; vowels in white."></canvas>
+    </section>
+
+    <section>
+      <p class="k">the numbers</p>
+      <h2>Every tensor in the file</h2>
+      <div class="scroll" tabindex="0" role="region" aria-label="Every tensor in the file"><table id="tensors"><thead><tr><th>name</th><th>shape</th><th>count</th><th>type</th><th>mean</th><th>std</th><th>min</th><th>max</th><th>spread</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted hidden" id="tensorsMore"></p>
+    </section>
+
+    <section>
+      <p class="k">the file's notes</p>
+      <h2>Everything written in its header</h2>
+      <div class="scroll" tabindex="0" role="region" aria-label="Everything written in its header"><table id="meta"><thead><tr><th>key</th><th>value</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+  </main>
+</div>
+
+<script src="gguf-header.js"></script>
+<script src="inspector-page.js"></script>
+</body>
+</html>

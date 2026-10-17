@@ -1,0 +1,19 @@
+{
+  "name": "parameter-space-inspector",
+  "version": "0.1.0",
+  "description": "Parameter Space Inspector: ask questions about how a language model works and settle them by measuring a GGUF model on your own computer.",
+  "main": "src/main.js",
+  "license": "Apache-2.0",
+  "author": "The Emergence Machine (https://emergencemachine.com)",
+  "scripts": {
+    "postinstall": "install-electron",
+    "start": "electron .",
+    "version": "node tools/write-version.js && git add src/ui/version.js"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0"
+  }
+}

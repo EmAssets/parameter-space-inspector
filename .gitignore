@@ -1,0 +1,23 @@
+node_modules/
+models/
+*.gguf
+out/
+dist/
+.cache/
+.userdata/
+# keys and credentials never go in the repository, wherever they are
+*.key
+*.p12
+*.pfx
+.env
+id_rsa*
+id_ed25519*
+!assets/control-vectors/*.gguf
+__pycache__/
+.venv/
+start-psi.cmd
+start-psi.sh
+
+# run logs written by the measurement scripts
+research/results/**/*.out
+research/results/**/*.log

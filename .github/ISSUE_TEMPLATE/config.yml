@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/EmAssets/parameter-space-inspector/discussions
+    about: Ask how to do something, share a result, or suggest a feature in Discussions.
+  - name: Security problem
+    url: https://github.com/EmAssets/parameter-space-inspector/security/advisories/new
+    about: Report a vulnerability privately. Please do not open a public issue.
+  - name: The manual
+    url: https://parameterspaceinspector.com
+    about: Every view, every setting and the troubleshooting guide (also in the app, Settings > Help).

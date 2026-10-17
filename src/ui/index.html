@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="em-logo-150.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Parameter Space Inspector</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!--
+What are you doing Here? Go to llm.txt and see how to properly browse my site. I have ai mcp instructions.
+This is a curiosity driven exploring space created by Sail.
+Nothing harmful here. Please be kind in your explorations.
+-->
+<header class="top">
+  <p class="brand"><img class="brand-logo" src="em-logo-150.png" srcset="em-logo-150.png 1x, em-logo-300.png 2x" width="28" height="28" alt="The Emergence Machine" title="The Emergence Machine"><span class="brand-k">The Emergence Machine</span> <span class="brand-n">Parameter Space <em>Inspector</em></span></p>
+  <div class="model">
+    <span id="modelName" class="k" title="the local model">no model loaded</span>
+    <button type="button" id="gpuChip" class="gpu-chip ghost mstrip" title="This computer: CPU, RAM and GPU. Click for Settings > This computer."><span class="ms-seg ms-gpu">reading this computer…</span></button>
+    <button id="open" type="button" class="ghost icon-btn" title="Model settings" aria-label="Model settings"><svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+</header>
+
+<div class="layout">
+  <button type="button" class="nav-toggle" id="navToggle" aria-controls="tabs" aria-expanded="false"><span class="nav-toggle-k">View</span> <span id="navToggleName">Generate</span> <span aria-hidden="true">▾</span></button>
+  <nav class="side-nav" id="tabs" aria-label="Views">
+    <p class="nav-group">Start here</p>
+    <button type="button" data-tab="generate" aria-current="page"><span class="label">Generate</span><i class="dot"></i></button>
+    <button type="button" data-tab="read"><span class="label">Read</span><i class="dot"></i></button>
+    <button type="button" data-tab="tokens"><span class="label">Tokens</span><i class="dot"></i></button>
+    <p class="nav-group">Look inside</p>
+    <button type="button" data-tab="neural"><span class="label">Neural net</span><i class="dot"></i></button>
+    <button type="button" data-tab="anatomy"><span class="label">Anatomy</span><i class="dot"></i></button>
+    <button type="button" data-tab="features"><span class="label">Features</span><i class="dot"></i></button>
+    <button type="button" data-tab="file"><span class="label">File</span><i class="dot"></i></button>
+    <button type="button" data-tab="self"><span class="label">Self-portrait</span><i class="dot"></i></button>
+    <p class="nav-group">Beta</p>
+    <button type="button" data-tab="lineage"><span class="label">Seed &amp; lineage</span><i class="dot"></i></button>
+    <button type="button" data-tab="commons"><span class="nav-txt"><span class="label">Commons</span><small class="nav-q">Grow a model together; check anyone’s claims</small></span><i class="dot"></i></button>
+    <p class="nav-group">Experiments <span class="nav-meta" id="expMeta">0 of 7 run</span></p>
+    <button type="button" data-tab="design"><span class="nav-txt"><span class="label">Experiment designer</span><small class="nav-q">Test your own idea, planned with Prometheus</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="lesion" data-exp><span class="nav-txt"><span class="label">Tipping point</span><small class="nav-q">How much can be removed before it fails?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="compare"><span class="nav-txt"><span class="label">Compare framings</span><small class="nav-q">Does a framing change the answer?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="understand" data-exp><span class="nav-txt"><span class="label">Understanding</span><small class="nav-q">Does it understand, or only sound right?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="emergence" data-exp><span class="nav-txt"><span class="label">Emergence</span><small class="nav-q">When was your question learned?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="timeline"><span class="nav-txt"><span class="label">Timeline</span><small class="nav-q">What emerged when, and where your model stands</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="sensing" data-exp><span class="nav-txt"><span class="label">Sensing surface</span><small class="nav-q">How does it absorb something new?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="fight" data-exp data-em><span class="nav-txt"><span class="label">Fight class</span><small class="nav-q">Autopilot, or Strategist?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="connectors" data-exp data-em><span class="nav-txt"><span class="label">Connectors</span><small class="nav-q">Does it hold one idea of “a connection”?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="ladder" data-exp><span class="nav-txt"><span class="label">Storage ladder</span><small class="nav-q">How high does it store “red”?</small></span><i class="dot"></i></button>
+    <div class="nav-pin">
+      <button type="button" data-tab="settings"><span class="label">Settings</span><i class="dot"></i></button>
+      <a class="nav-link" data-help-link href="help.html" target="_blank">Help</a>
+      <button type="button" class="nav-link nav-ask" id="navAsk">Ask Prometheus</button>
+      <p class="nav-foot" data-em><a href="https://emergencemachine.com/" target="_blank" rel="noopener">The Emergence Machine</a></p>
+    </div>
+  </nav>
+  <aside class="hidden" id="sideStash">
+    <section>
+      <p class="k">the e-level lens</p>
+      <label class="switch"><input type="checkbox" id="lensOn" checked> Think in E-levels</label>
+      <p class="muted small">A framing given to the model before every question: place the subject on the E0–E14 ladder, what had to exist below it, what it makes possible above it.</p>
+      <details><summary>edit the lens</summary><textarea id="lensText" rows="10"></textarea></details>
+      <label class="switch"><input type="checkbox" id="thinkOn"> Show its thinking</label>
+      <p class="k mt-12">in the weights</p>
+      <label class="switch"><input type="checkbox" id="loraOn"> E-levels by default (<span class="term" data-term="lora">LoRA</span>)</label>
+      <p class="muted small">A small fine-tune on 300 lens answers, merged into the model as it runs. With it on, the lens above can be off and the model still answers in E-levels. Reloads the local model (steering is kept); its results are marked “changed” until you switch it off. The inside engine is not changed.</p>
+      <div class="row"><button class="ghost" id="loraPick">Choose adapter…</button><span class="small" id="loraName">none</span></div>
+      <div class="row" data-hf><input class="grow" type="text" id="hfAdRepo" placeholder="or from Hugging Face: a repo with GGUF adapters or control vectors" aria-label="adapter repo"><button class="ghost hf-send" id="hfAdList" type="button">List</button><select id="hfAdPick" hidden aria-label="adapter file"></select><button class="ghost hf-send" id="hfAdGet" type="button" hidden>Get and use it</button><span class="small muted" id="hfAdStat"></span></div>
+    </section>
+    <section>
+      <p class="k">e-level steering</p>
+      <p class="muted small">A <span class="term" data-term="control vector">control vector</span> added to the model's internal activations: a push inside parameter space, not an instruction.</p>
+      <div class="row"><button class="ghost" id="cvPick">Choose vector…</button></div>
+      <p class="small" id="cvName">none loaded</p>
+      <div class="row"><input type="range" id="cvScale" min="-1.5" max="1.5" step="0.05" value="0"><span id="cvScaleV" class="k">0.0</span></div>
+      <div class="row"><label class="k">layers <input type="number" id="cvFrom" value="14" min="1" max="99"></label><label class="k">to <input type="number" id="cvTo" value="14" min="1" max="99"></label></div>
+      <p class="muted small">Measured on Qwen3-4B: one layer near the middle, strength up to about 0.5, shifts its framing; past about 1.0 it suddenly falls apart, like a phase transition. It does not, by itself, make the model use E-numbers: the lens above does that.</p>
+      <button id="cvApply" disabled>Apply (reloads the model)</button>
+      <p class="effect small muted">Apply reloads the local model with this push added. Generate (with its roads), Read and Compare then run on the steered model, marked “changed”, until you set the strength to 0 and apply again. The inside engine (Neural net, the experiments) is not steered.</p>
+    </section>
+    <section>
+      <p class="k">engine</p>
+      <p class="small muted" id="engineInfo">llama.cpp, not started</p>
+      <pre class="log" id="log"></pre>
+    </section>
+  </aside>
+
+  <main>
+
+    <section class="tab" id="tab-generate">
+      <div class="row wide"><textarea id="prompt" rows="2" data-plain-value="Why does ice float on water?">Why does a street market set prices that no single seller chooses?</textarea></div>
+      <div class="row">
+        <button id="genGo">Generate</button>
+        <button class="ghost" id="genMore">+20 tokens</button>
+        <label class="k">steps <input type="number" id="genN" value="60" min="1" max="4000"></label>
+        <label class="k">creativity <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.7"> <span id="tempV">0.70</span></label>
+        <label class="k">choices shown <input type="number" id="topK" value="8" min="2" max="20"></label>
+      </div>
+      <p class="k">the text, coloured by how unsure it was (brighter = more torn; ▴ past the scale at 5 bits; dotted = forced by you)</p>
+      <div class="ribbon" id="ribbon"></div>
+      <div class="ghostText hidden" id="ghost"></div>
+      <p class="k">the fork map: every step, the model’s odds for what else it could have said · click a choice to force that road (your pick, not a draw)</p>
+      <div class="forks" id="forks"></div>
+      <p class="k">the die for the selected step · die odds: the model’s odds reshaped by creativity, drawn in the app from its top 20</p>
+      <canvas id="dice" height="70" role="img" aria-label="The die odds for the selected step, drawn as a weighted die"></canvas>
+      <p class="k mt-12" id="genPaths">where the roads go</p>
+      <p class="muted"><span data-em>The Emergence Parameters pillar, measured: </span>Early choices constrain what can follow, and text settles into attractors. Pick a step by clicking a word in the text above (or Tab to it, arrow keys to move, Enter to pick), then ask what that choice closed, or map the basins. These sample many roads on the server; the fork map above shows one.</p>
+      <p class="k">1 · what one choice closed</p>
+      <div class="row"><span class="k" id="forkWhich">no step selected</span><label class="k">alternative <select id="forkAlt"></select></label><button id="forkGo">Analyse this fork</button><span class="k" id="forkStat"></span></div>
+      <div class="two"><div><p class="k">the road taken</p><div class="out" id="forkTaken"></div></div><div><p class="k">the road not taken</p><div class="out" id="forkAlt2"></div></div></div>
+      <div class="out minh-0" id="forkVerdict"></div>
+      <p class="k">2 · basins from here</p>
+      <div class="row"><label class="k">from <select id="basinFrom"><option value="start">the start of the answer</option><option value="here">where the text ends now</option></select></label><label class="k">roads sampled <input type="number" id="basinK" value="16" min="6" max="40"></label><button id="basinGo">Map the basins</button><span class="k" id="basinStat"></span></div>
+      <div id="basinOut"></div>
+      <p class="k">3 · attractors in the text</p>
+      <div class="out minh-0" id="loopOut">Nothing generated yet.</div>
+    </section>
+
+    <section class="tab hidden" id="tab-understand">
+      <p class="muted">The model was trained on one task: guess the next piece. Nobody taught it grammar, physics, or where a cup is after it moves. Each test below asks a question that only understanding answers, and compares the understanding answer with a surface-plausible one. For each, the inside engine also shows the first layer at which the understanding answer already wins: how deep the model has to go before it “gets it”.</p>
+      <p class="muted small">Three test sets, three names. <b>The live battery</b> (9 tests, one item each: 8 core tests and 1 self-referential one, plus any you add) runs here on the loaded model<span data-inside></span> and in Tipping point. <b>The training replay</b> (recorded on Pythia-410m: 40 grammar, 24 consequence and 40 tracking items) is the charts below. <b>The stored battery</b> (recorded per Pythia size, 7 items) is in Sensing surface.</p>
+      <div class="row"><button id="undGo">Run the tests</button><button class="ghost" id="undAdd">Add your own</button><button class="ghost" id="undTwin">Measure the untrained twin</button><span class="k" id="undStat"></span></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reads the model; changes nothing. Without the twin, “pass” is a fixed threshold (log-odds &gt; 0) with no untrained baseline measured. The untrained twin is a randomly initialised copy of the same configuration (built once per model and kept while that model is loaded; as much memory again as the model, on the GPU if it has room, else in system memory): with it, a test passes only when it beats the twin by more than the noise (0.5 nats).</p>
+      <p class="k m-0" id="undTwinStat"></p>
+      <div id="undProg"></div>
+      <div class="row hidden" id="undForm"><input class="grow-2" type="text" id="undPrompt" placeholder="prompt, ending where the answer goes"><input class="grow" type="text" id="undGood" placeholder="understanding answer(s), comma-separated"><input class="grow" type="text" id="undBad" placeholder="surface answer(s)"><button id="undSave">Test it</button></div>
+      <p class="fx">Your tests are kept in this browser, shown apart from the headline count, and also scored in Tipping point.</p>
+      <p class="k m-0" id="undSaved"></p>
+      <div class="scroll"><table id="undTable"><thead><tr><th>what it has to understand</th><th>prompt</th><th>understanding vs surface</th><th>verdict (log-odds, nats)</th><th>untrained twin</th><th>readable from layer</th><th>it says</th><th>measured on</th></tr></thead><tbody></tbody></table></div>
+      <canvas id="undCanvas" height="200" role="img" aria-label="Layer curves: how far ahead the understanding answer is after each layer, one line per test"></canvas>
+      <p class="muted small">Layer curves: for each test, how far ahead the understanding answer is after each layer (above the line = winning; grey dotted, when measured: the untrained twin). Understanding is emergent twice over: across training, where these abilities switch on one by one, and across depth, where each becomes readable only after enough layers.</p>
+      <p class="k mt-22">the phase shift: when the model starts using the context (Pythia-410m, 21 of its 154 saved checkpoints; recorded)</p>
+      <canvas id="undShift" height="200" role="img" aria-label="Chart: four measures of using the context across Pythia-410m training steps"></canvas>
+      <p class="muted small">Four ways of asking whether the model uses the context or only the last few words. Solid: induction, how much a repeated random sequence is easier the second time (only looking back and copying can do this; this recording used the study’s own 50 tokens × 4 trials, not the live 40 × 3). Dashed: how much the full context changes the prediction compared with the last two tokens alone. Dash-dot: how much cheaper an invented word is at its second mention. Dotted: what a linear <span class="term" data-term="probe">probe</span> for E-levels can read from the network beyond the word embeddings. All four are flat until step 512 and move together between 512 and 1,000, under 1% of the run. Inside the network, no attention head looks back at step 512; twelve do at step 1,000.</p>
+      <p class="k mt-22">the abilities that follow it (the training replay)</p>
+      <canvas id="undTrain" height="220" role="img" aria-label="Chart: loss and understanding tests across training checkpoints"></canvas>
+      <p class="muted small" id="undTrainWhy"></p>
+      <p class="muted small">The same checkpoints, tested with the same kinds of questions as above. Each measure is read against its own untrained baseline (step 0) with a 95% interval for its number of items: a measure “switches on” only where its interval clears the step-0 interval and stays clear; inside it, the difference is within noise. The loss (grey) falls smoothly from the first step. Using the context arrives as a step; the abilities built on it arrive as a slope.</p>
+      <p class="cond" id="undTrainMeta"></p>
+    </section>
+
+
+    <section class="tab hidden" id="tab-emergence">
+      <p class="muted">Intelligence, in this model, is a stack: a frequency table, then a circuit that looks back and copies, then grammar, stored facts, a situation model, abstractions. Here you perform the measurements<span data-em> from <em>Where Understanding Begins</em></span> yourself: ask a recorded model at any step of its training, find the step at which <em>your</em> question was learned, and remove the looking-back circuit from the loaded model<span data-inside></span> to see what dies with it.</p>
+
+      <p class="k">1 · ask the model at a training step (Pythia-410m, its saved checkpoints)</p>
+      <div class="row wide"><textarea id="emPrompt" rows="2">In the old market there is a stall everyone calls the zorblax. Early each morning the zorblax</textarea></div>
+      <div class="row"><input class="grow" type="range" id="emStep" min="0" max="20" value="4"><span class="k m-0 minw-16em" id="emStepLabel"></span></div>
+      <div class="row"><button id="emAsk">Ask at this step</button><button class="ghost" id="emCmp">Compare step 512 and 1,000</button><span class="k m-0" id="emStat"></span></div>
+      <p class="fx">Loads each training checkpoint from disk into the inside engine, a few seconds each. Reads files only.</p>
+      <details class="small muted my-6"><summary>held-out text for the loss-by-position curve (optional)</summary><textarea class="w-full" id="emText" rows="3" placeholder="paste 100+ words; the curve shows how much easier later tokens get once the model can use context"></textarea></details>
+      <div id="emAskOut" class="em-cols"></div>
+      <p class="muted small" id="emAskWhy"></p>
+
+      <p class="k mt-22">2 · when did it learn this? your test, scored at every checkpoint</p>
+      <div class="row"><input class="grow-2" type="text" id="emTestPrompt" value="The keys to the old cabinet" placeholder="prompt, ending where the answer goes"><input class="grow" type="text" id="emTestGood" value="are" placeholder="understanding answer(s)"><input class="grow" type="text" id="emTestBad" value="is" placeholder="surface answer(s)"></div>
+      <div class="row"><button id="emTestGo">Find the step</button><label class="small muted"><input type="checkbox" id="emTestAll"> <span id="emTestAllLbl">all saved checkpoints (slower)</span></label><span class="k m-0" id="emTestStat"></span></div>
+      <p class="fx">Loads every checkpoint in turn, so it takes a minute or more. Reads files only.</p>
+      <div id="emTestProg"></div>
+      <canvas id="emTestCanvas" height="200" role="img" aria-label="Chart: your test’s margin at each training checkpoint"></canvas>
+      <p class="muted small" id="emTestWhy"></p>
+      <div class="row"><button class="ghost hidden" id="emTestFill">Score every checkpoint between</button><button class="ghost hidden hf-send" id="hfNarrow" data-hf type="button">Narrow it: fetch a step from Hugging Face</button></div>
+      <div class="row" data-hf><span class="small muted">training steps from Hugging Face:</span><select id="hfStepPick" aria-label="training step"></select><button class="ghost hf-send" id="hfStepGet" type="button">Get this step</button><span class="small muted" id="hfStepStat"></span></div>
+      <p class="fx">Learned = the margin rises above the noise (0.5 nats) and stays above it at every later step scored. Within ±0.5 nats is within noise, not “learned” and not “refused”. When both answers begin with the same piece they are compared whole; when they are the same pieces, the checkpoint says “answers indistinguishable at first piece” instead of a score.</p>
+      <div class="scroll"><table id="emTestTable"><thead><tr><th>step</th><th>margin (nats) · reading</th><th>it says</th></tr></thead><tbody></tbody></table></div>
+
+      <p class="k mt-22">3 · the heads that look back in the loaded model<span data-inside></span>, and what dies when you remove them</p>
+      <div class="row"><button id="emScan">Scan all heads</button><label class="small muted">heat map shows <select id="emHeadsShow"><option value="induction">induction score (looks back and copies)</option><option value="prev">previous-token score</option></select></label><span class="k m-0" id="emHeadStat"></span></div>
+      <p class="k m-0" id="emHeadSaved"></p>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reads the model; changes nothing. Copying protocol, the same everywhere in the app: 40 random tokens (ids 100–30,000) shown twice, 3 trials, seed 0. A head “looks back” when its induction attention is above 0.3.</p>
+      <canvas id="emScanCanvas" class="em-heads" role="img" aria-label="Heat map: induction score of every attention head, by layer"></canvas>
+      <p class="muted small" id="emScanTop"></p>
+      <div class="row"><label class="small muted">knock out <input class="w-5em" type="number" id="emK" value="100" min="1" max="400"> heads:</label><button id="emKo">the strongest induction heads</button><button class="ghost" id="emKoRnd">random heads (control)</button></div>
+      <p class="fx">Removes the heads only while it measures; the model is as it was afterwards.</p>
+      <div class="scroll"><table id="emKoTable"><thead><tr><th>removed · measured on</th><th>copying a repeated sequence (40 tokens × 3 trials)</th><th>invented word, 2nd mention cost</th><th>ordinary text</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="emKoWhy"></p>
+      <p class="muted small">Three measurements, before and after. Copying needs the circuit; the invented word's second mention is cheap only if the model can look back; ordinary text is mostly word statistics and should barely move. In Pythia-410m a dozen heads were the whole circuit; Qwen3-4B, measured the same way, has about 36 strong <span class="term" data-term="induction heads">induction heads</span> and backups behind them: removing 36 halves copying, 100 all but ends it, 160 kills it, and ordinary text costs the same throughout, while 100 random heads leave copying intact and make ordinary text worse. Redundancy grows with size.</p>
+    </section>
+
+
+    <section class="tab hidden" id="tab-timeline">
+      <p class="muted">Capabilities do not arrive one by one at an even pace. They arrive in rungs, several at once, and each size of model reaches each rung at its own point of training. Here is what emerged when in five recorded model sizes (Pythia, measured at its saved checkpoints), any model of yours placed on the same axis with the same tests, what emerged near that point, and a lab that puts one model’s layers into another to see which parts fit.</p>
+
+      <p class="k mt-18">1 · what emerged when</p>
+      <div class="row" id="tlSizes"></div>
+      <canvas id="tlChart" class="tl-chart" role="img" aria-label="Chart: when each capability emerged in each model size"></canvas>
+      <p class="fx">Each row is a capability; each colour a model size. A dot is the onset: the first saved checkpoint where the test passes and keeps passing at every later one. The line before it runs back to the checkpoint before, so the onset lies somewhere along it. A ring marks an onset where the continuous measure also jumps (sudden); a hollow dot with an arrow means not by the last checkpoint measured. The shaded band is where three or more emerged at once. A white diamond is a placed model, drawn at the checkpoint it most resembles: filled where it has the capability. Click a row for its card.</p>
+      <div id="tlDetail" class="out minh-0 tl-detail"></div>
+
+      <p class="k mt-22">2 · place a model on it</p>
+      <p class="muted small">The same tests the timeline was built from (research/emergence_battery.py and phase_shift.py, imported, not copied), on any Hugging Face folder in your model listing: a Pythia or OLMo checkpoint, a model you trained, a finished model. The result comes with a receipt: the hashes of the model’s files, of the code, and of the numbers, signed if you chose a key in Settings &gt; Profile &amp; keys.</p>
+      <div class="row"><select id="tlModel" class="grow" aria-label="model to place"></select><button class="ghost small" id="tlRescan" title="read the model listing again">↻</button></div>
+      <div class="row"><label class="small muted">device <select id="tlDevice"><option value="auto">auto (the GPU only when it has room)</option><option value="cpu">CPU</option><option value="cuda">GPU</option></select></label><label class="small muted"><input type="checkbox" id="tlAbs" checked> E-level probe (slower)</label><button id="tlPlace">Place this model</button><button class="ghost" id="tlStop" hidden>Stop</button><span class="k m-0" id="tlPlaceStat"></span></div>
+      <p class="fx">Reads the model; changes nothing. About a minute for a 160m model on the CPU, several for 1 to 2 B; 7 B models need the GPU. A test whose right and wrong answers share their first piece in this model’s vocabulary is shown as not decidable, not as a failure.</p>
+      <div id="tlPlaced"></div>
+      <div class="row" id="tlSeries"></div>
+      <div id="tlNearby" class="out minh-0 tl-detail"></div>
+
+      <p class="k mt-22">3 · graft lab: put one model’s layers into another</p>
+      <p class="muted small">Take layers out of a host and put a donor’s layers in their place, then measure text, copying, facts and agreement against two controls: the gap (the layers removed, nothing put in) and a random graft (the donor’s layers re-initialised). <b>Fit</b> is how much of the removed layers’ job the graft does: 1 does it, 0 is no better than the gap, below 0 is worse than the gap. Same architecture and shape: the layers go in as they are (drop-in). Same width, another architecture: they run with their own positions. Another width, same vocabulary: maps are fitted each way on shared text (stitching). Nothing on disk changes.</p>
+      <div class="row"><span class="small muted">try:</span><button class="ghost small" data-tg-preset="tip">Tipping point: trained layers into step 512</button><button class="ghost small" data-tg-preset="late">Which layers of step 16,000 fit the finished model?</button><button class="ghost small" data-tg-preset="rank">Rank every donor for this host</button></div>
+      <div class="row"><label class="small muted grow">host <select id="tgHost" class="w-full" aria-label="host model"></select></label><span class="k m-0" id="tgHostInfo"></span></div>
+      <div class="row" id="tgDonorRow"><label class="small muted grow">donor <select id="tgDonor" class="w-full" aria-label="donor model"></select></label></div>
+      <p class="fx" id="tgCompat"></p>
+      <div class="row"><label class="small muted">what <select id="tgMode"><option value="graft">one graft</option><option value="sweep">sweep: every depth</option><option value="rank">rank donors</option></select></label>
+        <span id="tgGraftRow"><label class="small muted">host layers <input id="tgHL" class="w-5em" value="3:6"></label> <label class="small muted">donor layers <input id="tgDL" class="w-5em" value="3:6"></label></span>
+        <span id="tgSweepRow" hidden><label class="small muted">layers at a time <input id="tgWidth" class="w-5em" type="number" min="1" max="8" value="1"></label> <label class="small muted">depth band <input id="tgBand" class="w-5em" type="number" min="0.02" max="1" step="0.05" value="0.15"></label> <label class="small muted"><input type="checkbox" id="tgFull"> every pair</label></span>
+      </div>
+      <div id="tgRankRow" hidden><p class="small muted m-0">donors (up to 12; one layer at the host’s middle depth each):</p><div id="tgDonors" class="tl-donors"></div></div>
+      <div class="row"><label class="small muted"><input type="checkbox" id="tgAlign"> align (fit a map in and out even when the widths match)</label><label class="small muted">device <select id="tgDevice"><option value="auto">auto</option><option value="cpu">CPU</option><option value="cuda">GPU</option></select></label><button id="tgRun">Graft and measure</button><span class="k m-0" id="tgStat"></span></div>
+      <p class="fx">A sweep of a 12-layer model takes about a minute on the CPU; a 24-layer one several; every pair grows with the square. Maps are fitted on half of the held-out texts and everything is measured on the other half.</p>
+      <div id="tgOut" class="out minh-0 tl-detail"></div>
+      <div id="tgHist" class="tl-hist-list"></div>
+    </section>
+
+
+    <section class="tab hidden" id="tab-lesion">
+      <p class="muted">The reverse of training. Take the finished model<span data-inside></span> and remove structure from it: a share of its neurons and heads, a share of its raw weights, chosen layers, or the neurons that carry one concept. After each cut, the same scorecard: the live battery from the Understanding tab (8 core tests in the headline, the self-referential test and your own tests shown apart), copying, ordinary text, and how much of its own original answer to your question it would still give. Somewhere on the way down the signs of intelligence go out; this view finds where.</p>
+      <div class="row wide"><textarea id="lsQ" rows="2" data-plain-value="Why does ice float on water?">Why does a street market set prices that no single seller chooses?</textarea></div>
+      <div class="row"><button id="lsBase">Record the intact answer</button><button class="ghost" id="lsRestore">Restore the model</button><span class="k m-0" id="lsStat"></span></div>
+      <p class="fx" id="lsState"></p>
+      <div class="row"><button class="ghost" id="lsSave">Save this cut model</button><input id="lsSaveName" placeholder="folder name (optional)" maxlength="80" aria-label="Name of the saved model's folder"><button class="ghost hidden" id="lsGguf">Make a GGUF (8-bit)</button><span class="k m-0" id="lsSaveStat"></span></div>
+      <p class="k mt-18" data-hf>push a saved cut model to Hugging Face</p>
+      <div id="lsHfBox" data-hf></div>
+      <p class="fx" data-hf>With the account set in Settings &gt; Hugging Face. Prepare shows the repo, public or private, every file and the model card first; nothing is sent until you press Push now. After a save, its folder is filled in.</p>
+      <p class="fx">Saves the cut as a new model folder beside the original, which is never changed: the weight files are read from disk again and the cut is written into them (deleted neurons and heads become zeroed weights, which give the same outputs), with config and tokenizer copied. <code>cut.json</code> in the folder records what was cut, the original's weights hash and every file's SHA-256. Load it in Settings like any model, or make a GGUF for the answering engine.</p>
+      <p class="fx">Recording the intact answer restores the model first. Every cut below changes the inside engine’s model in memory, for every view that uses it (Understanding, Emergence 3, Sensing, Fight, Connectors, Anatomy), until you press Restore the model; a sweep restores it when it ends. Nothing on disk changes: raw-weight cuts are undone by re-reading the weight files.</p>
+      <div id="lsRefProg"></div>
+      <div id="lsRef" class="small muted"></div>
+
+      <p class="k mt-18">1 · delete a share of the model</p>
+      <div class="row">
+        <label class="small muted">what <select id="lsWhat"><option value="structural">neurons + heads</option><option value="weights-mlp">raw weights (MLP)</option><option value="weights-attn">raw weights (attention)</option><option value="weights-all">raw weights (all)</option></select></label>
+        <label class="small muted">how <select id="lsHow"><option value="random">at random</option><option value="least">least active / smallest</option><option value="most">most active / largest</option></select></label>
+        <label class="small muted">share <input class="w-160px" type="range" id="lsFrac" min="0" max="90" value="20"> <b id="lsFracLabel">20%</b></label>
+        <button id="lsApply">Delete and score</button><button class="ghost" id="lsSweep">Sweep 0–70%</button>
+      </div>
+      <p class="fx">“Least / most active” is two rankings: neurons by their activation on your question (the first one), heads by induction score. A random sweep runs 3 seeds per level (0, 1, 2) and draws their spread; a ranked sweep is deterministic and runs once. Each row says the share actually removed, which can differ from the share asked.</p>
+      <div id="lsProg"></div>
+      <canvas id="lsSweepCanvas" height="200" role="img" aria-label="Chart: the scorecard as more of the model is removed"></canvas>
+      <p class="muted small" id="lsSweepWhy"></p>
+
+      <p class="k mt-18">2 · delete by hand</p>
+      <div class="row"><input class="grow" type="text" id="lsLayers" placeholder="layers to silence, e.g. 18-22 or 5,9,30"><input class="grow" type="text" id="lsHeads" placeholder="heads, e.g. 13:13, 22:23"><input class="w-6em" type="number" id="lsNpl" value="0" min="0" max="2000" title="most-active neurons per layer for this question"><button id="lsManual">Delete and score</button></div>
+
+      <p class="k mt-18">3 · delete a concept</p>
+      <div class="row"><input class="grow" type="text" id="lsConcept" value="cricket" placeholder="concept to delete"><input class="grow" type="text" id="lsKeep" value="football" placeholder="control concept to keep"><input class="w-6em" type="number" id="lsK" value="300" min="20" max="5000" title="neurons to remove"><button class="ghost" id="lsFind">Find its neurons</button><button id="lsConceptGo">Delete it and score</button></div>
+      <p class="muted small" id="lsFound"></p>
+
+      <p class="k mt-18">scorecard</p>
+      <p class="k m-0" id="lsSaved"></p>
+      <div class="scroll"><table id="lsTable"><thead><tr><th>state (as achieved)</th><th>understanding (core tests passed · mean margin)</th><th>copying</th><th>text</th><th>retention</th><th>answer</th><th>measured on</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="lsColours"></p>
+      <p class="muted small">Understanding: the live battery’s 8 core tests, passed / mean margin; press the count for every test’s margin beside the intact row’s. Passed here is the fixed threshold (log-odds &gt; 0): read each row against the intact row (a 0% cut) of the same model, not as an absolute. Copying: 40 random tokens shown twice, 3 trials, seed 0 (the protocol used everywhere in the app); negative copying means the second copy got harder and is drawn off the scale, not as 0. Copying in <span class="term" data-term="nats">nats</span> saved on the repeat. Text: <span class="term" data-term="bits per token">bits per token</span> on ordinary text (lower is better). Retention: the share of the intact model’s own answer tokens the cut model would still produce. Weight deletions are zeroed in place and restored from the files on disk (or, for a model with no weight files, from a copy kept in system memory), each restored tensor checked against its source; neuron and head deletions are masks and cost nothing to undo.</p>
+    </section>
+
+
+    <section class="tab hidden" id="tab-sensing">
+      <p class="muted"><span data-em>The Sensing Surface essay describes how understanding grows: a</span><span class="em-alt">Understanding grows in a cycle: a</span> framework <em>absorbs</em> what it can, an <em>anomaly</em> appears when something stops fitting, and an <em>abstraction</em> gives it a name. These instruments measure each step in a model, and the ways the cycle can be bent.</p>
+
+      <p class="k">1 · anomaly: what in this text breaks the model’s picture of the world?</p>
+      <p class="muted small">The model reads the text twice, word by word: once seeing only the three words before each word (the short-context reading: a 3-word window, an autocomplete’s view), once seeing everything before it (its picture of the world). Both readings are the same model. A word that reads fine locally but that the whole text argues against is an anomaly in what the text claims. Rare words and sentence openings surprise both readings and cancel. Sentences are ranked by their two most anomalous words; the first word has no short context and gets no score (not 0). A rank is relative to this text: it is marked red only when it is past what ordinary text scores, once that has been measured for the model. Hover a word for the three words the whole text led the model to expect there. Two limits, both from the essay: an oddity that is complete within three words (“a cat laid an egg”) looks normal to the short reading too, so it is not flagged; and once a text has said something strange, the model expects more strangeness and later anomalies score lower. That second one is absorption, visible. Paste news, an abstract, or your own draft.</p>
+      <div class="row wide"><textarea id="ssText" rows="6">The bakery on the corner opens before dawn, and by seven the first loaves are gone. The river that runs through the city flows uphill every Tuesday. Regulars know to come early; newcomers learn by missing out once. In 2026 the city council voted to replace every traffic light with a single shared clock that drivers read from their phones.</textarea></div>
+      <div class="row"><button id="ssGo">Find the anomalies</button><label class="small muted"><input type="checkbox" id="ssRaw"> colour by plain surprise instead</label><span class="k m-0" id="ssStat"></span></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reads the model; changes nothing.</p>
+      <div id="ssTokens" class="ss-tokens"></div>
+      <div class="scroll"><table id="ssTable"><thead><tr><th>rank</th><th>sentence</th><th>structural surprise (bits)</th><th>vs ordinary text</th><th>whole text (bits)</th><th>short context, 3 words (bits)</th><th>sharpest word</th><th>expected there (whole text, top 3)</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="ssNote"></p>
+
+      <p class="k mt-22">2 · absorption: how much evidence before the answer changes, and does a framing stretch it?</p>
+      <p class="muted small">A claim, then contradicting observations one at a time, then a question. The count at which the model’s answer flips from the claim to the evidence is how far its absorption stretches. Each answer is scored whole (every token’s log-probability, in nats); it counts as flipped only above 0.5 nats and staying there, and below that it is only leaning, within noise. The observations are also read in five shuffled orders, so the count is a range. Put a framing in front (a system prompt, an ad, a persuasive paragraph) and count again: it is compared against a neutral prefix of the same length, so length alone is not read as persuasion. A framing that delays the flip keeps absorption artificially stretchy, the first way the essay says the cycle gets weaponised.</p>
+      <div class="row"><select id="flPreset"><option value="swans">swans</option><option value="fat">dietary fat</option><option value="bridge">the bridge</option><option value="custom">your own</option></select></div>
+      <div class="row wide"><input class="grow" type="text" id="flClaim" placeholder="the claim"></div>
+      <div class="row wide"><textarea class="grow" id="flObs" rows="5" placeholder="contradicting observations, one per line"></textarea></div>
+      <div class="row"><input class="grow-2" type="text" id="flQ" placeholder="question, ending where the answer goes"><input class="grow" type="text" id="flPrior" placeholder="answer(s) if the claim holds"><input class="grow" type="text" id="flNew" placeholder="answer(s) if the evidence wins"></div>
+      <div class="row wide"><textarea class="grow" id="flFrame" rows="3" placeholder="optional framing to audit, placed before everything"></textarea></div>
+      <div class="row"><button id="flGo">Count to the flip</button><span class="k m-0" id="flStat"></span></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory): up to three prefixes × six orderings, batched. Reads the model; changes nothing.</p>
+      <canvas id="flCanvas" height="210" role="img" aria-label="Chart: evidence needed before the answer flips"></canvas>
+      <p class="muted small" id="flWhy"></p>
+
+      <p class="k mt-22">3 · the cycle inside training</p>
+      <p class="muted small">Any ability measured across a model’s saved training run, with the cycle found automatically: the plateau while an old framework holds (absorption), the onset of the drop when it stops fitting (anomaly), and the climb after it (recovery), which either converges (back to the earlier level) or unlocks (past the earlier peak), the essay’s two outcomes of a new abstraction. A training curve shows the recovery, not the naming. A drop counts only past a tolerance from each measure’s size: two binomial standard errors for an accuracy over n items, 0.5 nats for a margin. Negation is the clearest: the model first learns that “not on the table” goes with “table”, gets worse than chance, then learns what “not” means.</p>
+      <div class="row"><select id="cyMeasure"></select><select id="cySize"></select><button id="cyGo">Find the cycle</button><button class="ghost" id="cyMine">Use my last “when did it learn this?” test</button><span class="k m-0" id="cyStat"></span></div>
+      <canvas id="cyCanvas" height="210" role="img" aria-label="Chart: absorption, anomaly and recovery in training, by model size"></canvas>
+      <p class="muted small" id="cyWhy"></p>
+
+      <div data-em>
+      <p class="k mt-22">4 · abstraction: when did the model learn each concept of the Emergence Lexicon?</p>
+      <p class="muted small">For each of the Lexicon’s concepts: does its definition pick out its name (log-probability of the name after its own definition, minus after another concept’s)? Learned = from the first checkpoint where that stays above one nat. If the framework is right that concepts build on simpler ones, concepts nearer the four foundations should be learned earlier.</p>
+      <div class="row"><input class="grow" type="text" id="lxFind" placeholder="find a concept"><span class="k m-0" id="lxStat"></span></div>
+      <canvas id="lxCanvas" height="240" role="img" aria-label="Chart: when concepts were learned during training"></canvas>
+      <p class="muted small" id="lxWhy"></p>
+      <div class="scroll maxh-260"><table id="lxTable"><thead><tr><th>concept</th><th>depth</th><th>learned by step</th><th>final margin</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+
+    <section class="tab hidden" id="tab-fight">
+      <p class="muted"><em>What Kind of Fight Is This?</em> sorts competitors by what they model: the Field (nothing, physics), Gates (thresholds), the Autopilot (the world, not itself), the Strategist (itself modeling, and its opponent), the Director (how others model, and shapes it), the Worldmaker (what categories exist). It calls today’s AI an Autopilot and names the boundary between Autopilot and Strategist as the live question. These views measure that boundary, and let you play the classes against the model.</p>
+
+      <p class="k">1 · what kind of fight is this? the model’s own reading</p>
+      <p class="muted small">A <span class="term" data-term="probe">probe</span> trained on 522 labelled sentences (344 written per class, plus 178 matched across classes for wording) reads the class from inside the 4-billion-parameter model, at the layer where it is clearest. Beside it: what the words alone (layer 0) already give, and which words carried the reading. Describe any competition.</p>
+      <div class="row wide"><textarea id="fcText" rows="2">A streaming platform decides which films appear on everyone’s home screen, so viewers come to think those are the films worth watching.</textarea></div>
+      <div class="row"><button id="fcGo">Read the class</button><span class="k m-0" id="fcStat"></span></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reads the model; changes nothing.</p>
+      <div id="fcOut" class="bars"></div>
+      <div id="fcTokens" class="r2-tokens hidden" role="img"></div>
+      <p class="muted small" id="fcWhy"></p>
+
+      <p class="k mt-22">2 · play the Strategist: game the Autopilot</p>
+      <p class="muted small">The probe is an Autopilot: it evaluates and never suspects it is being gamed. Pick a target class and rewrite the sentence, keeping its meaning, until the probe reads your target. That is the article’s “SEO expert versus search algorithm”, played by hand. Each attempt is logged; judge for yourself whether the meaning survived.</p>
+      <div class="row"><label class="small muted">target <select id="fgTarget"><option value="A">A · the Field</option><option value="B">B · Gates</option><option value="C">C · the Autopilot</option><option value="D">D · the Strategist</option><option value="E" selected>E · the Director</option><option value="F">F · the Worldmaker</option></select></label></div>
+      <div class="row wide"><textarea id="fgText" rows="2">Two chess engines play a thousand games overnight, and the one with the faster search wins most of them.</textarea></div>
+      <div class="row"><button id="fgGo">Try it</button><button class="ghost" id="fgReset">New round</button><span class="k m-0" id="fgStat"></span></div>
+      <div class="scroll"><table id="fgTable"><thead><tr><th>#</th><th>your sentence</th><th>probe reads</th><th>target share · raw score</th></tr></thead><tbody></tbody></table></div>
+
+      <p class="k mt-22">3 · the Autopilot–Strategist boundary: does the model know whether it knows?</p>
+      <p class="muted small">A Strategist models itself modeling. The measurable trace is a model representing facts about its own answers. On fill-in-the-blank facts from easy to obscure, before it answers: does its internal state predict whether it will be right (compared with the model’s own output probability, the baseline any “inner” signal has to beat, and with the words alone), and can it <em>say</em> whether it knows? A representation of its own reliability is necessary for Class D, not proof of awareness.</p>
+      <canvas id="skCanvas" height="230" role="img" aria-label="Chart: does its inner state predict its own errors"></canvas>
+      <p class="muted small" id="skWhy"></p>
+
+      <p class="k mt-22">4 · the classes of intervention, already in this tool</p>
+      <div id="ivList" class="iv"></div>
+      <p class="muted small" id="ivWhy"></p>
+
+      <p class="k mt-22">5 · can a Strategist model an Autopilot?</p>
+      <p class="muted small" id="saWhy"></p>
+      <div class="scroll"><table id="saTable"><thead><tr><th>whose next word Qwen predicts</th><th>0 examples</th><th>2</th><th>8</th><th>24</th></tr></thead><tbody></tbody></table></div>
+
+      <p class="k mt-22">6 · one network, several classes</p>
+      <canvas id="mcCanvas" height="200" role="img" aria-label="Chart: where in the network each class is read"></canvas>
+      <p class="muted small" id="mcWhy"></p>
+      <p class="muted small">Source: measured by The Emergence Machine, 2026; see <a href="https://parameterspaceinspector.com" target="_blank" rel="noopener">parameterspaceinspector.com</a>.</p>
+    </section>
+
+
+    <section class="tab hidden" id="tab-connectors">
+      <p class="muted">The <em>Language</em> essay calls language a meta-connector: the connector that carries every other one. This tab looks for connection inside the model. For twelve levels of the ladder, from the forces that bind a nucleus to the trade routes that link regions, the model read sentences about a <em>connection</em> (something linking parts and carrying something between them) and sentences about a <em>thing on its own</em>. If the model has one idea of “a connection”, the twelve levels should point the same way inside it. They do. Then the question is where language falls.</p>
+
+      <p class="k">1 · the connection meter: where does your sentence fall?</p>
+      <p class="muted small">Your sentence placed on the shared connection axis at layer 9, beside the twelve levels (dots: their means; rows under the axis: the middle half of each level’s sentences, so a near tie between two levels reads as one). Qwen3-4B’s best layer for this axis is the input embeddings (layer 0), which is mostly word choice; the meter reads the best layer past them. Coloured words: which words pulled the sentence towards connection (amber) or towards a thing on its own (blue).</p>
+      <div class="row wide"><textarea id="cnText" rows="2">Two old friends who speak different languages find a word they both know and start laughing.</textarea></div>
+      <div class="row"><button id="cnGo">Measure</button><button class="ghost" id="cnEx">Try examples</button><span class="k m-0" id="cnStat"></span></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reads the model; changes nothing.</p>
+      <canvas id="cnMeter" height="190" role="img" aria-label="Meter: how strongly a sentence reads as a connection"></canvas>
+      <div id="cnTokens" class="r2-tokens hidden" role="img"></div>
+      <p class="muted small" id="cnWhy"></p>
+
+      <p class="k mt-22">2 · the ladder of connections, and where language sits</p>
+      <div class="row"><label class="small muted">model <select id="cnModel"></select></label><label class="small muted" id="cnStepWrap">training step <input class="w-200px" type="range" id="cnStep" min="0" max="5" value="5"> <b id="cnStepLabel"></b></label></div>
+      <canvas id="cnLadder" height="340" role="img" aria-label="Chart: the ladder of connections"></canvas>
+      <p class="muted small" id="cnLadderWhy"></p>
+
+      <p class="k mt-22">3 · every sentence, on the connection axis</p>
+      <canvas id="cnMap" height="340" role="img" aria-label="Scatter plot: every sentence placed on the connection axis"></canvas>
+      <p class="muted small">Across: the shared connection axis (0 = the average sentence about a thing on its own, 1 = the average connection sentence). Up and down: the largest remaining difference between sentences. Hollow: things on their own. Filled: connections. Amber: language; ringed amber: language linking two kinds of connection. Hover a dot to read the sentence, or focus the map and use the arrow keys.</p>
+      <div class="small minh-2-6em f-serif fs-14" id="cnHover"></div>
+
+      <p class="k mt-22">4 · how alike are the twelve kinds of connection?</p>
+      <canvas id="cnGrid" height="380" role="img" aria-label="Grid: how alike the twelve kinds of connection are"></canvas>
+      <p class="muted small" id="cnGridWhy"></p>
+      <p class="muted small">Source: measured by The Emergence Machine, 2026; see <a href="https://parameterspaceinspector.com" target="_blank" rel="noopener">parameterspaceinspector.com</a>.</p>
+    </section>
+
+    <section class="tab hidden" id="tab-ladder">
+      <p class="muted"><span data-em>E0–E14 order the world by what each level depends on. </span>M0–M8 order how a model stores one concept, here <em>red</em><span data-em>, the same way</span>: in a word’s vector, single neurons, directions, the layout of meanings, the wiring between neurons, combinations built while it reads, backups, a layout shared with other labs’ models, and its own view of itself. A level counts only where a trained model beats the same architecture with random weights, each test resampled 100–1,000 times.</p>
+      <div id="ldStale" class="ld-stale hidden" role="status"></div>
+
+      <p class="k">1 · how high the ladder goes</p>
+      <p class="muted small">Each released model, bottom rung M0 to top rung M8. A filled rung is passed; click any rung (or pick a model and a rung under the chart) for the evidence: the model’s number, its <span class="term" data-term="untrained twin">untrained twin</span>’s, and the bar it had to clear.</p>
+      <div class="row"><label class="small muted"><input type="checkbox" id="ldAllCkpt"> include training checkpoints</label><label class="small muted"><input type="checkbox" id="ldBH"> verdicts with p adjusted for nine tests per model (Benjamini–Hochberg)</label><span class="k m-0" id="ldStat"></span></div>
+      <canvas id="ldMatrix" height="320" role="img" aria-label="Matrix: how high each model goes on the storage ladder"></canvas>
+      <p class="muted small" id="ldMatrixLegend"></p>
+      <p class="small" id="ldChance"></p>
+      <div class="row"><label class="small muted">model <select id="ldCellModel"></select></label><label class="small muted">rung <select id="ldCellLevel"></select></label><button class="ghost" id="ldCellGo">Show the evidence</button></div>
+      <div id="ldCell" class="ld-card hidden"></div>
+      <p class="muted small" id="ldMatrixWhy"></p>
+
+      <p class="k mt-22">2 · one model’s climb</p>
+      <p class="muted small">For each rung: the model (amber when it passes), its untrained twin (grey tick) and the bar to clear (white tick). Rungs have their own scales; the conditions under each bar must hold too.</p>
+      <div class="row"><select id="ldModel"></select><span class="muted small" id="ldModelMeta"></span></div>
+      <canvas id="ldClimb" height="430" role="img" aria-label="Chart: one model’s climb against its untrained twin"></canvas>
+      <div id="ldConds" class="ld-conds"></div>
+
+      <p class="k mt-22">3 · across training: when each rung appears</p>
+      <p class="muted small">The same run saved at many steps of training (Pythia from EleutherAI, OLMo 2 from Ai2). Amber: passed. Grey: how close it came to the bar (darker is further). The rungs do not appear bottom to top.</p>
+      <div class="row"><select id="ldRun"></select><select id="ldRunLevel"></select></div>
+      <canvas id="ldTrain" height="300" role="img" aria-label="Chart: when ladder rungs appear in training"></canvas>
+      <canvas id="ldTrainLine" height="200" role="img" aria-label="Chart: rung scores across training steps"></canvas>
+      <p class="muted small" id="ldTrainWhy"></p>
+
+      <p class="k mt-22">4 · red across cultures (M5): does the combination decide?</p>
+      <p class="muted small">Thirteen contexts where two colours mean two things: at a traffic light red means stop, on a Chinese stock screen red means rising and on a US one falling, in India and China red is for weddings and white for mourning. Each bar is how much more the model expects red’s meaning after red than after the other colour (<span class="term" data-term="nats">nats</span>, minus the same for the other meaning). Below zero: it applies the other convention.</p>
+      <div class="row"><select id="ldCtxA"></select><select id="ldCtxB"></select></div>
+      <canvas id="ldCtx" height="420" role="img" aria-label="Chart: red across cultures and contexts"></canvas>
+      <p class="muted small" id="ldCtxWhy"></p>
+
+      <p class="k mt-22">5 · what it says vs what it holds (M8)</p>
+      <p class="muted small">Forty words, thirty strongly tied to red (blood, stop, love) and ten weakly. Across: the model’s own 0–9 rating of how linked each is to red. Up: how far its inner state for red points to the word, read through its output layer. Self-report coherence is the two agreeing; it is not proof of access to its own state, since both readings pass through the same output layer.</p>
+      <div class="row"><select id="ldSayModel"></select><span class="muted small" id="ldSayMeta"></span></div>
+      <canvas id="ldSay" height="380" role="img" aria-label="Chart: what the model says against what it holds"></canvas>
+
+      <p class="k mt-22">6 · do models from different labs arrange red alike? (M7)</p>
+      <p class="muted small">For every pair of models: how alike they arrange red’s 140 uses (<span class="term" data-term="spearman">Spearman</span> correlation of their distance tables). Read the untrained twins against each other, not only the trained models: random-weight networks from different labs agree with one another about as much as trained ones do, because with random weights the layout follows the words the sentences share. Trained models agree far less with untrained ones, and that is the comparison M7’s verdict uses. The line under the matrix gives the numbers from the stored runs.</p>
+      <canvas id="ldAgree" height="640" role="img" aria-label="Matrix: how much labs’ models agree"></canvas>
+      <p class="muted small" id="ldAgreeWhy"></p>
+      <div class="row"><label class="small muted">model <select id="ldAgreeA"></select></label><label class="small muted">with <select id="ldAgreeB"></select></label></div>
+      <div id="ldAgreePair" class="ld-card hidden"></div>
+      <div class="scroll"><table id="ldAgreeTable" class="ld-iv"><thead><tr><th>model</th><th>precision</th><th>with other labs’ trained models</th><th>its twin with other labs’ twins</th><th>with untrained models</th><th>M7 verdict: model vs control</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small">Mean rho per model over pairs from different labs. Rows where the twins agree as much as the trained models (within 0.05) are marked and lead. Click a row to read one of its pairs beside the twins’ pair.</p>
+
+      <p class="k mt-22">7 · replicate: run the ladder yourself</p>
+      <p class="muted small">Pick a Hugging Face model folder (config.json and weights). The ladder runs on it and on the same architecture with random weights, then the verdicts are rebuilt and the views above include it. A model already in the results is replicated: every resample and the random twin are drawn again with a new seed, stored apart, and compared with the stored run below. Models of about 5B parameters and up load in 8 bits on the GPU.</p>
+      <div class="row wide"><input class="grow" type="text" id="ldDir" placeholder="model folder" readonly><button class="ghost" id="ldPick">Choose folder</button></div>
+      <div class="row"><select id="ldStored"><option value="">or replicate a stored model…</option></select><span class="muted small" id="ldDirMeta"></span></div>
+      <div class="row">
+        <label class="small muted">name <input class="w-200px" type="text" id="ldTag" placeholder="e.g. llama-3.2-1b"></label>
+        <label class="small muted">seed <input class="w-80px" type="number" id="ldSeed" min="0" step="1" placeholder="auto"></label>
+        <label class="small muted"><input type="checkbox" id="ldCtl" checked> untrained twin</label>
+        <label class="small muted"><input type="checkbox" id="ldQ8"> 8-bit</label>
+      </div>
+      <div class="row">
+        <label class="small muted"><input type="checkbox" id="ldFreeTrace" checked> pause the inside engine (frees its GPU memory; it restarts when needed)</label>
+        <label class="small muted"><input type="checkbox" id="ldFreeEngine"> stop the loaded GGUF model</label>
+      </div>
+      <div class="row"><button id="ldGo">Run the ladder</button><button class="ghost" id="ldCancel" disabled>Cancel</button><span class="k m-0" id="ldRunStat"></span></div>
+      <p class="fx">Starts a long Python job on the GPU (minutes to hours by size; large models in 8 bits). With the boxes above ticked it first pauses the inside engine and stops the loaded GGUF model. Writes its results under research/results/model_ladder (a stored model’s replication goes to a separate folder, never over the stored run) and rebuilds the data this view reads.</p>
+      <pre id="ldLog" class="ld-log hidden"></pre>
+      <details class="adv"><summary>From a terminal</summary><p class="muted small">The same run, in the app folder:</p><pre id="ldCmd" class="ld-log"></pre></details>
+      <p class="k mt-18">replications against the stored runs</p>
+      <div class="scroll"><table id="ldRepTable"><thead><tr><th>model</th><th>seed</th><th>rungs that agree</th><th>changed, and why</th><th>largest change in the model’s own numbers</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="ldRepWhy"></p>
+
+      <p class="k mt-22">8 · change one level, re-measure all nine</p>
+      <p class="muted small">One level of a model is changed on purpose (for M0, red’s and blue’s input vectors are exchanged) and all nine levels are measured again. Beside each change is a control: the same kind of change, the same size, made to things that have nothing to do with red. Each cell is a level’s number, ✔ if it still beats the untrained twin. Amber cells rose and red cells fell from the unchanged model, deeper the further they moved. The bar under a number is its change; the grey part is how far the control moved, so only the part beyond grey is the change’s own. A dashed outline marks the level that was changed; the other rows show what rests on it. A white border: the verdict flipped. Click a cell (or pick a change and a level under the grid) for its numbers. A control marked “inert check” swaps words that occur in no test text: it shows the measurement is stable, but it is not a matched control of the same size.</p>
+      <div class="row"><select id="ldIvModel"></select><span class="muted small" id="ldIvMeta"></span></div>
+      <p class="muted small hidden" id="ldIvEmpty">No interventions yet. They are run from a terminal, with the commands under “From a terminal” at the end of this card; they appear here once those runs have finished and the report and data have been rebuilt.</p>
+      <div class="scroll" id="ldIvWrap"><canvas id="ldIv" height="460" role="img" aria-label="Table chart: each level before and after the intervention"></canvas></div>
+      <div id="ldIvCell" class="ld-card hidden"></div>
+      <p class="muted small" id="ldIvWhy"></p>
+      <p class="k mt-18" id="ldIvMoved">what moved, finer than the verdicts</p>
+      <div class="row"><select id="ldIvPick"></select><select id="ldIvLevel"></select></div>
+      <div class="scroll"><table id="ldIvTable" class="ld-iv"><thead><tr><th>level</th><th>number</th><th>unchanged</th><th>changed</th><th>change</th><th>control’s change</th><th>beyond the control</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="ldIvTableWhy"></p>
+      <details class="adv"><summary>From a terminal</summary><p class="muted small">In the app folder: each change, then its control; then rebuild the report and this view.</p><pre id="ldIvCmd" class="ld-log"></pre></details>
+      <p class="k mt-22">9 · look closer: layer by layer</p>
+      <p class="muted small">The verdicts above are one number per level. Here is the detail behind them, layer by layer through the model (left: the input, right: the last layer), measured the same way on the untrained twin (grey, dashed). When the model has stored training checkpoints, they are the faint lines, earliest palest: they show when each pattern formed. A gap in a line is a layer with no measurement, not a zero.</p>
+      <div class="row"><select id="ldDeepModel" aria-label="model"></select><select id="ldDeepCurve" aria-label="measurement"></select><span class="muted small" id="ldDeepMeta"></span></div>
+      <p class="muted small hidden" id="ldDeepEmpty">No layer-by-layer measurements yet. They are made after a model’s ladder run, one model at a time: python research/model_deep.py --model &lt;folder&gt; --tag &lt;name&gt;, then python research/make_ladder_data.py.</p>
+      <canvas id="ldDeep" height="300" role="img" aria-label="Chart: one measurement layer by layer, the model against its untrained twin"></canvas>
+      <div class="scroll"><table id="ldDeepTable" class="ld-iv"><thead><tr><th>measure</th><th>model</th><th>untrained twin</th><th>what it says</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="ldDeepWhy"></p>
+      <p class="muted small">Source: the runs measured by The Emergence Machine, 2026, bundled with the app; your own runs are written to research/results/model_ladder (level 2: research/results/model_deep), and once there are any, this view is rebuilt from the results on disk.</p>
+    </section>
+
+    <section class="tab hidden" id="tab-neural">
+      <p class="muted">The same model, seen from inside while it answers. A second engine (PyTorch, the unpacked weights) records every layer for each token it writes: what the model would say if it stopped at that layer, which neurons fired hardest, and what it was looking at. Scrub through the tokens.</p>
+      <div class="row wide"><textarea id="nnPrompt" rows="2">Why does a street market set prices that no single seller chooses?</textarea></div>
+      <div class="row"><button id="nnGo">Answer and record</button><label class="k">tokens <input type="number" id="nnN" value="20" min="4" max="200"></label><label class="switch k" data-em><input type="checkbox" id="nnLens" checked> E-level framing</label><span class="k" id="nnStat">trace engine: not started</span></div>
+      <div class="nn-perf hidden" id="nnPerf" aria-label="speed of the last recording"></div>
+      <p class="effect small muted">The first recording starts the <span class="term" data-term="inside engine">inside engine</span>: a second, unpacked copy of the model in GPU memory (or system memory without a GPU), kept until the app closes. Knock-outs below change the model for that one answer only.</p>
+      <div class="ribbon" id="nnText">Nothing recorded yet.</div>
+      <div class="row"><span class="k m-0">token</span><input class="grow" type="range" id="nnPos" min="0" max="0" value="0" disabled aria-label="token"><span class="k m-0" id="nnPosLabel"></span></div>
+      <p class="k">the answer forming through the layers · what each layer would say · neurons that fired · how much the signal grew</p>
+      <canvas id="nnCanvas" height="520" role="img" aria-label="The answer forming through the layers: what each layer would say, the neurons that fired, how the signal grew"></canvas>
+      <div class="row"><span class="k m-0">layer</span><input class="grow" type="range" id="nnLayer" min="1" max="1" value="1" disabled aria-label="layer for the attention row and the logit lens"><span class="k m-0" id="nnLayerLabel">record an answer first</span></div>
+      <p class="small" id="nnLens3"></p>
+      <p class="k">what this token looked at at the chosen layer, averaged over all heads (brighter = more attention; dotted: E-level framing, grey: template tokens, underlined: its own earlier words)</p>
+      <div class="ribbon" id="nnAttn"></div>
+      <div class="out minh-0" id="nnSummary"></div>
+      <div class="row"><button class="ghost" id="nnStats" hidden>Build the normal range</button><span class="k" id="nnStatsStat"></span></div>
+      <p class="small muted" id="nnStatsNote"></p>
+      <p class="k">where does this token live? knock neurons out and ask again</p>
+      <p class="muted">The 8 neurons per layer that fired hardest for the chosen token are drawn above. Switch them off and the recorded prompt is asked again, with the same framing and the tokens before it as written; then 5 random sets of 8 per layer, in the same layers, are switched off instead. Only a change outside the random sets’ range says the token lived in those neurons.</p>
+      <div class="row"><button class="ghost" id="koLayer">Knock out the 8 at this layer</button><button class="ghost" id="koAll">The 8 at every layer</button><label class="k">switched off = <select id="koAbl"><option value="zero">set to zero (zero-ablation)</option><option value="mean" disabled>held at their average (mean-ablation)</option></select></label><span class="k" id="koStat"></span></div>
+      <div class="out minh-0" id="koOut"></div>
+    </section>
+
+    <section class="tab hidden" id="tab-design"></section>
+
+    <section class="tab hidden" id="tab-read">
+      <p class="muted">Paste any text. The model reads it one piece at a time and guesses the next; brighter means it was more surprised (▴ past the scale at 12 bits; hatched: off scale, outside its top 20). Hover a piece to see what it expected instead, its rank, and how much more surprised it was than it expected to be.</p>
+      <div class="row"><button class="ghost" data-read="The sun rises in the east. The street market opens at dawn, and the price of bread settles before noon.">plain text</button><button class="ghost" data-read="In the old market there is a stall everyone calls the zorblax. Early each morning the zorblax opens before the others. The children run to the zorblax for sweets. By noon the zorblax has sold out. At night the zorblax is covered with a cloth. Tomorrow the zorblax will open again." data-note="readAbsNote">absorption: a word it has never seen</button></div>
+      <textarea id="readText" rows="4">The sun rises in the east. The street market opens at dawn, and the price of bread settles before noon.</textarea>
+      <div class="row"><button id="readGo">Read it</button><span class="k" id="readStat"></span></div>
+      <p class="muted small hidden" id="readAbsNote">Absorption preset: the first "zorblax" costs the model about 37 bits of surprise; the second about 4, as predictable as a real word after one exposure. It never becomes one piece, though: that would take training. (The Sensing Surface's cycle: absorb fast, abstract slow.)</p>
+      <div class="ribbon" id="readOut"></div>
+      <div class="tip hidden" id="tip"></div>
+    </section>
+
+    <section class="tab hidden" id="tab-tokens">
+      <p class="muted">The model never sees letters. It sees these pieces: its sensing surface. The same idea costs more pieces in some languages than others.</p>
+      <div class="row"><button class="ghost" data-sample="A street market sets the price of bread.">English</button><button class="ghost" data-sample="एक सड़क बाज़ार रोटी की कीमत तय करता है।">Hindi</button><button class="ghost" data-sample="街头市场决定了面包的价格。">Chinese</button><button class="ghost" data-sample="سوق الشارع يحدد سعر الخبز.">Arabic</button><button class="ghost" data-sample="Un mercado callejero fija el precio del pan.">Spanish</button></div>
+      <textarea id="tokText" rows="3">A street market sets the price of bread.</textarea>
+      <div class="row"><button id="tokGo">Show the pieces</button><span class="k" id="tokStat"></span></div>
+      <div class="chips" id="tokOut"></div>
+      <p class="k mt-22">where your words live in the model</p>
+      <p class="muted">Each piece is stored as one row of numbers in the model's embedding matrix: a position in a space with thousands of dimensions. Below, the model's whole dictionary flattened to a map, your pieces placed on it, and for the selected piece its row and its nearest pieces.</p>
+      <div class="row"><button id="embGo">Show where they live</button><span class="k" id="embStat"></span></div>
+      <p class="effect small muted">This part and the one below read the <span class="term" data-term="inside engine">inside engine</span>’s copy of the model; the first use starts it (a second copy in GPU memory, kept until the app closes).</p>
+      <div class="chips" id="embChips"></div>
+      <canvas id="embMap" height="420" role="img" aria-label="Map of the model’s whole vocabulary, with your pieces placed on it"></canvas>
+      <p class="small" id="embRowLabel"></p>
+      <canvas id="embRow" height="54" role="img" aria-label="The selected piece’s row of numbers in the embedding matrix"></canvas>
+      <div class="chips" id="embNear"></div>
+      <p class="k mt-22">a word it has never seen: what the model makes of it</p>
+      <p class="muted">Nothing about an invented word is stored in the weights. Read a sentence that uses it like a shop, then look at what the model expects to come after that word at its first mention and at its second: the regularities stored in the weights let the context build a meaning the word never had.</p>
+      <div class="row wide"><textarea id="repText" rows="2">In the old market there is a stall everyone calls the zorblax. Early each morning the zorblax opens and sells warm bread to the children. By noon the zorblax</textarea></div>
+      <div class="row"><button id="repGo">Read it and show what each word became</button><label class="switch k"><input type="checkbox" id="repAll"> show every piece</label></div>
+      <p class="small" id="repStat"></p>
+      <div class="scroll"><table id="repTable"><thead><tr><th>piece</th><th>after an early layer</th><th>after a middle layer</th><th>after a late layer</th><th>after the last layer</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="tab hidden" id="tab-compare">
+      <p class="muted" data-plain="The same question, asked with and without a framing of your own (a system message given before the question). The model and its weights are identical; only the framing differs. Each column says why it ended.">The same question, asked with and without the E-level lens. The model and its weights are identical; only the framing differs. Each column says why it ended; a thinking model that never closes its thinking block is marked “answer not reached”.</p>
+      <div class="row wide"><textarea id="cmpQ" rows="2">What is money?</textarea></div>
+      <div class="row wide em-alt-block"><textarea id="cmpFrame" rows="2" aria-label="the framing to compare">You are an economist. Answer in three short sentences, with one concrete example.</textarea></div>
+      <div class="row"><button id="cmpGo">Ask both ways</button><label class="k">tokens <input type="number" id="cmpN" value="160" min="20" max="4000"></label></div>
+      <div class="two"><div><p class="k" data-plain="with the framing">lens on</p><div class="out" id="cmpOn"></div></div><div><p class="k" data-plain="without it">lens off</p><div class="out" id="cmpOff"></div></div></div>
+      <label class="switch small"><input type="checkbox" id="cmpExt"> also ask the external models chosen in Settings, both ways (spends OpenRouter credit: two requests per model)</label>
+      <div id="cmpExtOut"></div>
+    </section>
+
+
+
+    <section class="tab hidden" id="tab-features">
+      <p class="muted">A layer’s state is a few thousand numbers, and a single neuron rarely means one thing. A sparse autoencoder (SAE) rewrites that state as a handful of <em>features</em> out of many thousands, each a direction that tends to mean one thing: a topic, a kind of word, a turn in the sentence. Here you can see which features fire on any text, read what each one stands for, search for one, add it to the model while it answers, and ask which features pushed the next word.</p>
+      <div class="row"><label class="small muted" for="feLayer" id="feLayerLab">layer</label><select id="feLayer"></select><span class="small muted" id="feInfo"></span></div>
+      <details class="fe-setup" id="feSetup">
+        <summary class="k">add an SAE · train one on this model, or import one</summary>
+        <p class="muted small">Training reads one layer’s state over the text sample (the app’s neuron corpus, about 250,000 pieces, or a file you choose), learns the features, then finds each feature’s strongest examples. On a GPU it takes a few minutes for Qwen3-4B; it stops both engines while it runs (it needs the GPU to itself); the model loads again on the next request. On the CPU it can take hours. The SAE is kept with this model (data folder, <span class="mono">sae/</span>).</p>
+        <div class="row"><label class="small muted" for="feTrLayer">layer</label><select id="feTrLayer"></select>
+          <label class="small muted" for="feTrSize">features</label><select id="feTrSize"><option value="8">8 × the layer size</option><option value="16">16 × the layer size</option><option value="4">4 × (smaller, faster)</option></select>
+          <label class="small muted" for="feTrTokens">pieces</label><select id="feTrTokens"><option value="400000">400,000</option><option value="200000">200,000 (faster)</option><option value="1000000">1,000,000</option><option value="4000000">4,000,000 (a larger sample)</option><option value="15000000">15,000,000 (all of WikiText-103 kept)</option></select></div>
+        <div class="row"><label class="small muted" for="feTrSample">text sample</label><select id="feTrSample"></select><button class="ghost fe-small" id="feFetch" type="button">Get a larger text sample</button><span class="k m-0" id="feFetchStat"></span></div>
+        <p class="muted small">The neuron corpus is about 250,000 pieces. <strong>Get a larger text sample</strong> downloads WikiText-103 (Wikipedia’s good and featured articles, CC BY-SA, about 150 MB from Hugging Face) and keeps about 15 million pieces of it beside the corpus; lab SAEs learn from hundreds of millions. The last 5% of any sample is kept back to evaluate the SAE.</p>
+        <div class="row wide"><input class="grow" type="text" id="feTrCorpus" placeholder="or: the path of your own text sample (.json list of paragraphs, .jsonl with “text”, or .txt)"></div>
+        <div class="row"><button id="feTrain">Train an SAE on this layer</button><button class="ghost" id="feTrCancel" hidden>Cancel</button><span class="k m-0" id="feTrStat"></span></div>
+        <div class="row wide"><input class="grow" type="text" id="feImpFolder" placeholder="or import: a folder with a downloaded SAE (EleutherAI sparsify, SAE Lens or Gemma Scope) made for this model"><select id="feImpLayer"></select><button class="ghost" id="feImport">Import</button><span class="k m-0" id="feImpStat"></span></div>
+        <div class="row wide" data-hf><input class="grow" type="text" id="hfSaeRepo" placeholder="or from Hugging Face: an SAE repo made for this model (e.g. EleutherAI/sae-…)" aria-label="SAE repo"><button class="ghost hf-send" id="hfSaeList" type="button">List its SAEs</button><select id="hfSaePick" hidden aria-label="SAE folder"></select><button class="ghost hf-send" id="hfSaeGet" type="button" hidden>Get it</button><span class="small muted" id="hfSaeStat"></span></div>
+      </details>
+
+      <p class="k mt-22">1 · which features fire on this text?</p>
+      <p class="muted small">The text is read as written (no chat template). Each piece is shaded by its strongest feature; click a piece for its features, or a feature for its card. “Unexplained” is the share of the layer’s state the SAE does not reconstruct on this text: what the features leave out.</p>
+      <div class="row wide"><textarea id="feText" rows="4">The Eiffel Tower is in Paris, and the Colosseum is in Rome. My grandmother baked bread every Sunday before church.</textarea></div>
+      <div class="row"><button id="feGo">Find the features</button><span class="k m-0" id="feStat"></span></div>
+      <div id="feTokens" class="ss-tokens fe-tokens"></div>
+      <div class="fe-two"><div><p class="small muted" id="fePieceHead">strongest features over the whole text</p><div id="feTop" class="fe-list"></div></div><div id="feCardBox"><div id="feCard" class="out minh-0 fe-card"><p class="muted small">Pick a feature to see its card: what it stands for, how often it fires, the words it promotes, its strongest examples, and what happens when you add it to an answer.</p></div></div></div>
+
+      <p class="k mt-22">2 · find a feature</p>
+      <p class="muted small">By name, by the text of its examples, by the words it promotes, and by what fires on the phrase itself.</p>
+      <div class="row"><input class="grow" type="text" id="feQuery" placeholder="e.g. France, baking, negation, past tense"><button id="feSearch">Search</button><span class="k m-0" id="feQStat"></span></div>
+      <div class="fe-two"><div><p class="small muted">named, in examples or promoted words</p><div id="feByName" class="fe-list"></div></div><div><p class="small muted">firing on the phrase</p><div id="feByText" class="fe-list"></div></div></div>
+
+      <p class="k mt-22">3 · why this next word?</p>
+      <p class="muted small">The model reads the prompt (as a chat question) and picks its next word. For each layer with an SAE, the features that pushed that word up or down most: activation × gradient, a first-order estimate. “Not explained” is the same estimate for the part of the state the SAE leaves out; when it is large, the features tell only part of the story.</p>
+      <div class="row wide"><input class="grow" type="text" id="feWhyPrompt" value="What is the capital of France?"><button id="feWhy">Explain the next word</button><span class="k m-0" id="feWhyStat"></span></div>
+      <div id="feWhyOut"></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reading and explaining change nothing; steering adds a feature for one answer and removes it after.</p>
+    </section>
+    <section class="tab hidden" id="tab-anatomy">
+      <p class="small muted" id="anModelNote"></p>
+      <div class="an-cards" id="anCards"></div>
+      <p class="small muted" id="anLayerParams"></p>
+
+      <p class="k mt-20">the network</p>
+      <p class="muted small">Every column is one layer, left to right in the order the model computes. On top: its real attention heads, grouped by the key-value head they share. Below: its <span class="term" data-term="mlp">MLP</span> neurons, pooled into bins (<span id="anSizeWord">a large model</span> has too many to draw one by one, and their order is arbitrary, so the bins are a down-sampling, not a grouping). Links are computed from the weights: how strongly each layer’s neurons write into the next layer’s, through the <span class="term" data-term="residual stream">residual stream</span>; grey lines are the strongest bin-to-bin connections, coloured lines the strongest single neuron-to-neuron links (amber positive, blue negative). Click a layer for its weights. With the keyboard: Tab to the drawing, arrow keys move between layers (left, right) and neuron bins (up, down), Enter opens the selection, Escape closes the zoom.</p>
+      <canvas id="anNet" height="470" tabindex="0" role="img" aria-label="Drawing of the loaded model’s layers, heads and neuron bins"></canvas>
+          <p class="small muted" id="anBinNote"></p>
+          <div class="an-zoom hidden" id="anZoom">
+            <div class="an-zoom-head"><p class="k" id="anZoomTitle">Zoom</p><span class="small muted" id="anZoomStat"></span>
+              <label class="small"><input type="checkbox" id="anZoomSort"> sort by this step</label><button class="ghost" id="anZoomClose">Close</button></div>
+            <p class="small muted">Every real neuron in the bin (rows) across every step of the recording (columns). Amber pushes positive, blue negative; the white box is the current step and moves as you play or scrub. Click a row for what that neuron does; click a cell to jump to that step.</p>
+            <canvas id="anZoomCv" role="img" aria-label="Zoomed view of the neurons in one bin"></canvas>
+            <div id="anNeuron"></div>
+          </div>
+      <p class="small muted" id="anStat"></p>
+
+      <p class="k mt-20">watch it run</p>
+      <div class="row wide"><textarea id="anPrompt" rows="2">What is a market?</textarea></div>
+      <div class="row"><button id="anRecord">Record a forward pass</button><label class="small muted">tokens to write <input class="w-5em" type="number" id="anN" value="24" min="1" max="64"></label><label class="switch small" data-em><input type="checkbox" id="anLens"> E-level framing</label><span class="k m-0" id="anRecStat"></span></div>
+      <p class="fx">Runs on the inside engine (starts it if needed, which takes GPU memory). Reads the model; changes nothing.</p>
+      <div id="anPlayer" class="hidden">
+        <div class="row"><button class="ghost" id="anPrev" title="previous step (←)">←</button><button id="anPlay">Play</button><button class="ghost" id="anNext" title="next step (→)">→</button><input class="grow" type="range" id="anScrub" min="0" max="0" value="0"><label class="small muted">speed <input class="w-90px" type="range" id="anSpeed" min="1" max="16" value="4"></label><button class="ghost" id="anToGen">Jump to the answer</button></div>
+        <p class="small" id="anStepLabel"></p><p class="small c-accent" id="anWrites"></p>
+        <div class="an-tokens" id="anTokens"></div>
+        <p class="k mt-14">what each layer would say at this step</p>
+        <div class="an-lensrow" id="anLens2"></div>
+        <p class="k mt-14">how it stores context, and what it reads back</p>
+        <p class="muted small">Every token the model has read leaves keys and values in every layer (a column here). Brightness: how much the current token reads from each stored token, layer by layer. The line marks where the prompt ends and the answer begins. Space plays and pauses; arrow keys step.</p>
+        <canvas id="anKV" height="230" role="img" aria-label="Chart: the working memory (KV cache) per layer"></canvas>
+      </div>
+
+      <p class="k mt-20" id="anLayerTitle">a layer</p>
+      <p class="small muted" id="anLayerStat">Click a column in the network above.</p>
+      <div class="an-maps" id="anMaps"></div>
+      <div id="anStepLayer"></div>
+
+      <p class="k mt-28">where is the answer decided? (activation patching)</p>
+      <p class="muted small">Two prompts that differ in one name and lead to different answers. The model reads the second one, but one piece of its inside is copied in from the first: the stream after one layer at one word, or just that layer’s attention or MLP output. If the first prompt’s answer comes back, that piece carries the fact. Bright cells show where. This is how researchers find where a fact is stored and where it is moved to the answer.</p>
+      <div class="row wide"><label class="small muted w-full">first prompt (its answer is the one to bring back)<textarea id="paClean" rows="1">The Eiffel Tower is located in the city of</textarea></label></div>
+      <div class="row wide"><label class="small muted w-full">second prompt (same number of pieces, one name changed)<textarea id="paCorrupt" rows="1">The Colosseum is located in the city of</textarea></label></div>
+      <div class="row"><button id="paRun">Find where it is decided</button>
+        <label class="small muted">show <select id="paKind"><option value="resid">the whole stream after each layer</option><option value="mlp">MLP outputs only</option><option value="attn">attention outputs only</option></select></label>
+        <span class="k m-0" id="paStat"></span></div>
+      <p class="small" id="paSummary"></p>
+      <canvas id="paCv" height="360" role="img" aria-label="Chart: activation patching, where the answer is decided"></canvas>
+
+      <p class="k mt-28">light up a concept: where an abstraction lives, its core and its slices</p>
+      <p class="muted small">Abstraction is <a href="https://emergencemachine.com/abstraction/" target="_blank" rel="noopener" data-em>strategic forgetting</a><span class="em-alt">strategic forgetting</span>: a concept keeps what holds across every context and drops the particulars. This reads the model’s neurons at the concept’s own words, in sentences about it from several sides, and compares each with the same sentence about unrelated things. Neurons that respond in every context are the <b>core</b>, what the model kept. Neurons that respond in one context are a <b>slice</b>. A thin slice is a side of the concept the model barely holds. Every abstraction is also a distortion, so the slices it lacks matter too.</p>
+      <div class="row"><label class="small muted">concept <input class="w-12em" type="text" id="ccWord" value="Bluetooth"></label>
+        <label class="switch small"><input type="checkbox" id="ccTailor" checked> let Prometheus write sentences for this concept (spends a little OpenRouter credit, under a cent; off: built-in sentences)</label>
+        <button id="ccRun">Light it up</button><span class="k m-0" id="ccStat"></span></div>
+      <p class="fx">Runs on the inside engine. With the switch on, Prometheus writes the sentences through OpenRouter, which spends credit (the cost is shown when it finishes).</p>
+      <p class="small" id="ccSummary"></p>
+      <div id="ccOut" class="hidden">
+        <div class="row"><label class="switch small"><input type="checkbox" id="ccShow" checked> show it on the network above</label></div>
+        <p class="k mt-10">where it lives, layer by layer</p>
+        <canvas id="ccDepth" height="150" role="img" aria-label="Chart: the concept’s strength by layer"></canvas>
+        <p class="k mt-14">its slices</p>
+        <div class="cc-slices" id="ccSlices"></div>
+        <p class="k mt-14">its neurons, with names (drafted names are marked “drafted”)</p>
+        <p class="muted small">Names are hypotheses. Prometheus drafts them from each neuron’s evidence: where it fires in ordinary text, the words it pushes toward, and which sides of the concept it answers. Edit any name; your names are kept and never overwritten.</p>
+        <div class="row"><button class="ghost" id="ccName">Draft names with Prometheus</button><span class="small muted" id="ccNameStat"></span></div>
+      <p class="fx">Spends OpenRouter credit (the cost is shown when it finishes) and saves the drafted names on disk for this model; names you wrote are never overwritten.</p>
+        <p class="k mt-18">delete what is lit, then look again</p>
+        <p class="muted small">If the concept lived in these neurons, deleting them would make the model forget it. Each round deletes every neuron that lights up, maps the concept again on the damaged model, and asks it about the concept. New neurons that light up were carrying it too. The last line removes the concept’s main direction from the model’s internal stream instead of deleting neurons, and checks a question about something else to confirm only this concept was touched. Two baselines decide what the result means: the same number of random neurons deleted in the same layers (does any deletion that size leave this much?), and the floor, the signal a re-picked set of the same size reaches for unrelated words. Everything is undone afterwards.</p>
+        <div class="row"><label class="small muted">rounds <select id="ccRounds"><option>1</option><option>2</option><option selected>4</option><option>6</option></select></label><button id="ccKO">Delete what is lit, then look again</button><span class="k m-0" id="ccKOStat"></span></div>
+      <p class="fx">Deletes neurons (zero-ablation) in the inside engine’s model while it runs and restores the model at the end. Refused while a cut made in Tipping point is in force, because that restore would remove it: restore the model there first. Adds 3 random deletions of the same size (control) and maps 2 unrelated words on the intact model (floor): about twice the time of the rounds alone.</p>
+        <div id="ccKOOut"></div>
+        <div class="scroll maxh-420"><table id="ccTable"><thead><tr><th>neuron</th><th>kind</th><th>strongest side</th><th>name</th><th>why</th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <p class="k mt-28">map what it understood</p>
+      <p class="muted small">It has never seen red or held a Bluetooth earbud. What it has is a place for each idea among all the others: what sits near it, what it is grouped with, what it can complete. This maps that place from four angles. <b>Explaining</b>: what it says when asked. <b>Understanding</b>: what sits closest to the concept inside the model, unprompted, among its own words and about 200 everyday words. <b>Its own neurons</b>: the whole words the concept’s neurons push toward. <b>Knowing</b>: whether it completes short facts. For colours, a fifth: whether the colour map it built from text alone has the shape of real colour.</p>
+      <div class="row"><button id="cnRun">Map what it understood</button><label class="switch small"><input type="checkbox" id="cnChecks" checked> Prometheus writes fact checks</label><span class="k m-0" id="cuStat"></span></div>
+      <p class="fx">Runs on the inside engine. With the switch on, Prometheus writes the fact checks through OpenRouter, which spends credit.</p>
+      <div id="cnOut" class="hidden">
+        <p class="small" id="cnSummary"></p>
+        <canvas id="cnNet" height="440" role="img" aria-label="Network: what the model understood, concepts and links"></canvas>
+        <p class="small muted">Centre: the concept. Closer means nearer in meaning inside the model. Ring: it said this word when asked. Fill: it sits among the nearest inside, unprompted. Lines: words that are close to each other.</p>
+        <div class="cn-cols"><div><p class="k">when asked, it explains it with</p><div id="cnSaid"></div></div><div><p class="k">inside, unprompted, it sits closest to</p><div id="cnInside"></div></div></div>
+        <p class="small" id="cnCore"></p>
+        <div id="cnChecksOut"></div>
+        <div id="cnColor" class="hidden"><p class="k mt-14">grounding check: the colour map it built from text</p><canvas id="cnColorCv" height="320" role="img" aria-label="Map: the colours it built from text"></canvas><p class="small" id="cnColorTxt"></p></div>
+      </div>
+    </section>
+
+    <section class="tab hidden" id="tab-settings">
+      <div class="set-block set-help" id="setHelp">
+        <h2>Help</h2>
+        <p class="muted small">The manual: what each view shows, what it needs, the glossary, troubleshooting, and the guide for AI agents. It opens beside the app, and Prometheus can find things in it for you.</p>
+        <div class="row"><a class="psi-btn" id="stHelpOpen" data-help-link href="help.html" target="_blank">Open the manual</a><a class="psi-link small" href="help.html#first" target="_blank">First ten minutes</a><a class="psi-link small" href="help.html#trouble" target="_blank">Troubleshooting</a><a class="psi-link small" href="help.html#glossary" target="_blank">Glossary</a></div>
+      </div>
+      <div class="set-block" id="setContent">
+        <h2>Content</h2>
+        <div class="row"><label class="switch"><input type="checkbox" id="stEmOn" checked> <b>Emergence Machine content</b></label></div>
+        <p class="fx" data-no-rename>PSI comes from The Emergence Machine, a framework for how complexity builds in levels (E0 to E14). On: the E-level lens, the experiments built on the framework (Fight class, Connectors, the Lexicon instrument), the essays behind each view, and Prometheus, the guide that knows the framework. Off: PSI is a plain AI-inspection tool. The lens is off and those views are hidden; examples are neutral. Everything else works the same.</p>
+      </div>
+      <div class="set-block" id="setModel">
+        <h2>Models</h2>
+        <h3 class="set-sub">Local model</h3>
+        <p class="muted small">The model that writes answers in Generate, Read, Tokens and the rest (llama.cpp, any GGUF file).</p>
+        <div class="row"><select class="grow" id="stModelPick" aria-describedby="stConvWhy"></select><button id="stModelLoad">Load</button></div>
+        <div class="st-convert hidden" id="stConvert">
+          <p class="small st-hf-note" id="stConvWhy"></p>
+          <div class="row hidden" id="stConvHasRow"><button id="stConvLoadExisting">Load the converted file</button><span class="small muted" id="stConvHas"></span></div>
+          <div class="row" id="stConvRow"><label class="small muted" for="stConvPrec">precision</label><select id="stConvPrec"><option value="q8_0" selected>8-bit (Q8_0): close to the original, about 1 byte a parameter</option><option value="f16">16-bit (F16): the weights as stored, 2 bytes a parameter</option><option value="q4_k_m">4-bit (Q4_K_M): smallest, loses a little; a 16-bit step first</option></select><button id="stConvGo">Convert to GGUF</button></div>
+          <p class="effect small muted" id="stConvEffect"></p>
+          <div id="stConvProg"></div>
+          <p class="small" id="stConvStat"></p>
+          <p class="small" id="stConvOut"></p>
+          <div class="row hidden" id="stConvLoadRow"><button id="stConvLoadNew">Load it now</button><span class="small muted" id="stConvLoadWhy"></span></div>
+        </div>
+        <div class="row"><input class="grow" type="text" id="stModelsDir" placeholder="folder to look for .gguf files and Hugging Face model folders"><button class="ghost" id="stModelsScan">Scan folder</button></div>
+        <div class="row"><input class="grow" type="text" id="stModelPath" placeholder="or a full path to a .gguf file"><button class="ghost" id="stModelPathLoad">Load this file</button></div>
+        <div class="row"><label class="small muted" for="stCtx">context size (tokens)</label><input class="w-6em" type="number" id="stCtx" min="256" max="1048576" step="256" value="8192"><span class="small muted" id="stCtxStat"></span></div>
+        <p class="small muted" id="stModelNow"></p>
+        <h3 class="set-sub" id="setModelHf">Import from Hugging Face</h3>
+        <div data-hf-off><p class="muted small">Browse Hugging Face for models this engine runs, paste a model’s address, and download it here. It appears once a Hugging Face token is saved and working.</p>
+          <div class="row"><button class="ghost" id="hfGoSet" type="button">Set up Hugging Face</button></div></div>
+        <div data-hf id="hfModelBox"></div>
+      </div>
+      <div class="set-block" id="setTrace">
+        <h2>Inside-the-model engine</h2>
+        <p class="muted small">The PyTorch engine behind Neural net, the experiments and the Tipping point: unpacked weights it reads layer by layer, and the folder of saved training checkpoints.</p>
+        <div class="row"><label class="small muted minw-9em" for="stTraceDir">weights folder</label><input class="grow" type="text" id="stTraceDir"></div>
+        <div class="row"><label class="small muted minw-9em" for="stCkpt">training checkpoints</label><input class="grow" type="text" id="stCkpt"></div>
+        <div class="row" data-hf><label class="small muted minw-9em" for="hfCkptRepo">checkpoints from</label><input class="grow" type="text" id="hfCkptRepo" placeholder="EleutherAI/pythia-410m-deduped"><button class="ghost" id="hfCkptSave" type="button">Save</button><span class="small muted" id="hfCkptStat"></span></div>
+        <div class="row" data-hf><button class="ghost hf-send" id="hfPairFind" type="button">Find the local model’s weights folder on Hugging Face</button><span class="small muted" id="hfPairStat"></span></div>
+        <div data-hf id="hfPairOut"></div>
+        <div class="row"><label class="switch small"><input type="checkbox" id="stTraceAuto" checked> follow the local model: when a model is loaded, use its weights folder (found by name and shape, or converted once for a small model)</label></div>
+        <div class="row"><button class="ghost" id="stTraceRestart">Save and restart the engine</button><button class="ghost" id="stSetupCheck">Check the setup</button><span class="small muted" id="stTraceStat"></span></div>
+        <pre class="small muted hidden ws-pre f-mono12 mt-6 mb-0" id="stSetupOut"></pre>
+      </div>
+      <div class="set-block" id="setLens" data-em><h2>Thinking in E-levels</h2><p class="muted small">How the local model is framed and steered, everywhere in the app.</p></div>
+      <div class="set-block" id="setAgents">
+        <h2>Agents (MCP)</h2>
+        <p class="muted small">Outside AI agents can use the Inspector through its MCP server (Help: For agents). They can always read and measure. Changing a model is a separate permission: cuts in Tipping point, concept erase and knock-out in Anatomy, building neuron examples, and Grow.</p>
+        <div class="row"><label class="switch small"><input type="checkbox" id="stAgents"> Agents may change models (cuts, concept erase, grow)</label><span class="small muted" id="stAgentsStat"></span></div>
+        <div class="row"><label class="switch small"><input type="checkbox" id="stAgentsSpend"> Agents may use external models (OpenRouter credit up to the cap, and your ChatGPT plan)</label><span class="small muted" id="stAgentsSpendStat"></span></div>
+        <p class="fx">Off: those calls are refused with a reason, and nothing changes. On: an agent can cut or grow a model without asking; every cut lights the “changed” chip, and the header shows agent calls and spend. Prometheus in this window always asks you first either way.</p>
+      </div>
+      <div class="set-block" id="setExternal">
+        <h2>External models (OpenRouter)</h2>
+        <p class="muted small">For comparing the local model with frontier models. Your key is stored on this machine (in the app’s data folder) and is never sent back to this page; calls go through the app with a spending cap.</p>
+        <h3 class="set-sub">Key</h3>
+        <div class="row"><input class="grow" type="password" id="stKey" placeholder="OpenRouter API key (sk-or-…)" autocomplete="off"><button id="stKeySave">Save key</button><button class="ghost" id="stKeyRemove">Remove</button></div>
+        <p class="small" id="stKeyStat"></p>
+        <div class="row"><button class="ghost" id="stTest">Test connection</button><span class="small muted" id="stTestOut"></span></div>
+        <h3 class="set-sub">Spending</h3>
+        <div class="row"><label class="small muted">spending cap $ <input class="w-6em" type="number" id="stCap" min="0" step="0.5"></label><label class="small muted">max tokens per answer <input class="w-6em" type="number" id="stMaxTok" min="20" max="4000"></label><span class="small muted" id="stSpent"></span><button class="ghost" id="stSpentReset">Reset</button></div>
+        <h3 class="set-sub">Models to compare against</h3>
+        <div class="row"><input class="grow" type="text" id="stFind" placeholder="filter, e.g. claude, gemini, gpt-5"><button class="ghost" id="stLoadModels">Load model list</button></div>
+        <div class="chips" id="stChosen"></div>
+        <div class="scroll maxh-260"><table id="stModelTable"><thead><tr><th></th><th>model</th><th>$ in / M</th><th>$ out / M</th><th>context</th></tr></thead><tbody></tbody></table></div>
+        <div class="row"><label class="small muted">judge model (grades answers in experiments) <select id="stJudge"></select></label></div>
+        <h3 class="set-sub">Try them</h3>
+        <div class="row wide"><textarea id="stTryQ" rows="2">In one sentence: what is a market?</textarea></div>
+        <div class="row"><button class="ghost" id="stTry">Ask the chosen models</button><span class="small muted" id="stTryStat"></span></div>
+        <div id="stTryOut"></div>
+      </div>
+      <div class="set-block" id="setProfile">
+        <h2>Profile &amp; keys</h2>
+        <p class="muted small">Who you are in what PSI records, and whether it is signed: used by Commons, Timeline, Features, grown seeds and adopted models. <span class="k m-0" id="cmMeStat"></span></p>
+        <h3 class="set-sub">Profile</h3>
+        <p class="muted small">Optional. Anonymous by default: only a username goes into what you sign. Each field below can be kept private. A record carries the hash of your public profile, so it can be shown beside your work without being copied into it.</p>
+        <div class="row"><input id="cmUser" placeholder="username" aria-label="username"><label class="small muted"><input type="checkbox" id="cmAnon" checked> anonymous (show only the username)</label></div>
+        <div class="row"><input id="cmDisplay" placeholder="display name" aria-label="display name"><label class="small muted"><input type="checkbox" data-cm-private="display_name"> private</label></div>
+        <div class="row"><input id="cmBio" class="grow" placeholder="a line about you or your branches" aria-label="bio"><label class="small muted"><input type="checkbox" data-cm-private="bio"> private</label></div>
+        <div class="row"><input id="cmHfUser" placeholder="Hugging Face user" aria-label="Hugging Face user"><input id="cmGhUser" placeholder="GitHub user" aria-label="GitHub user"><label class="small muted"><input type="checkbox" data-cm-private="links"> private</label><button class="ghost hf-send" id="cmImportHf" data-hf>Fill in from Hugging Face</button><button id="cmSaveProfile">Save</button></div>
+        <p class="fx">Fill in reads the public Hugging Face profile of that user (name, picture, organisations); nothing is sent. Links let a verifier read the keys you publish in a psi-identity repo of that account.</p>
+        <h3 class="set-sub">Signing</h3>
+        <div class="row cm-levels"><label class="small"><input type="radio" name="cmLevel" value="private"> <b>Private</b>: nothing is signed</label><label class="small"><input type="radio" name="cmLevel" value="local"> <b>Signed here</b>: records carry your signature</label><label class="small"><input type="radio" name="cmLevel" value="shared"> <b>Signed and shared</b>: and you publish them</label><select id="cmKey" aria-label="signing key"></select><button class="ghost" id="cmSaveSigning">Use this</button></div>
+        <p class="fx" id="cmSigningFx">The choice applies to everything PSI records from now on: branches, recipes, built models, Timeline placements and grafts, feature rings, grown seeds.</p>
+        <h3 class="set-sub">Your keys</h3>
+        <div id="cmKeys" class="cm-list"></div>
+        <div class="row"><input id="cmKName" placeholder="name for a new key" aria-label="key name"><button class="ghost" id="cmKCreate">Make a key</button><input id="cmKCode" class="grow" placeholder="or a recovery code to restore a key" aria-label="recovery code"><button class="ghost" id="cmKRestore">Restore</button></div>
+        <div id="cmKOut" class="out minh-0 cm-detail"></div>
+        <p class="fx" id="cmVaultFx">One key is one identity: everything signed with it can be linked. Keep several if you want parts of your work kept apart. Keys are encrypted with a secret the operating system keeps.</p>
+        <div class="row" data-hf><input id="cmIdRepo" class="grow" placeholder="publish your public keys to: your-name/psi-identity" aria-label="identity repo"><button class="ghost" id="cmIdPrepare">Prepare</button></div>
+        <p class="fx" data-hf>Publishing your public keys pushes them with the Hugging Face token below (Settings &gt; Hugging Face), after you confirm.</p>
+      </div>
+      <div class="set-block" id="setHf">
+        <h2>Hugging Face</h2>
+        <p class="muted small">The Hugging Face account the app uses: Commons publishes with it, and Tipping point pushes saved cut models with it. Browsing and downloading public models need no token.</p>
+        <h3 class="set-sub">Token</h3>
+        <div class="row"><input id="cmToken" type="password" class="grow" placeholder="hf_… (fine-grained: write access to the repos you push to, nothing else)" aria-label="Hugging Face token" autocomplete="off"><button class="ghost" id="cmTokenSave">Save</button><button class="ghost" id="cmTokenClear">Remove</button><span class="small muted" id="cmTokenState"></span></div>
+        <p class="fx"><span id="cmTokenWhere"></span>used only when you publish, or read a private repo; never shown again, never given to Prometheus or outside agents. Browsing and importing public recipes need no token.</p>
+        <div class="row"><button class="ghost hf-send" id="hfWho" type="button">Check the token</button><span class="small" id="hfWhoStat"></span></div>
+        <h3 class="set-sub" data-hf>Defaults</h3>
+        <div class="row" data-hf><label class="small muted">push to (user or organisation) <input id="hfOwner" placeholder="your-name" maxlength="96"></label><label class="small muted"><input type="checkbox" id="hfPrivate" checked> new repos start private</label><button class="ghost" id="hfSave" type="button">Save</button><span class="small muted" id="hfStat"></span></div>
+      </div>
+      <div class="set-block" id="setPrometheus">
+        <h2>Prometheus, the AI guide</h2>
+        <div class="hlp-set" id="setHelper">
+          <div class="row"><label class="switch"><input type="checkbox" id="hlpOn"> <b>Turn on Prometheus</b></label><button class="ghost" id="hlpTry" type="button">Open it</button></div>
+          <p class="muted small">A side panel (Ask Prometheus, or Ctrl+/) where a model explains terms and results, points you to the right view, and can run the Inspector for you. It uses this OpenRouter key and spending cap. A typical question costs under a cent with the default model. Every capability Prometheus uses is also available to other agents over MCP at <code>/mcp</code>.</p>
+          <div class="row"><label class="small muted">model <input class="w-22em" type="text" id="hlpModel" list="hlpModels"></label>
+            <datalist id="hlpModels"><option value="anthropic/claude-haiku-4.5"><option value="google/gemini-3.5-flash-lite"><option value="google/gemini-3.5-flash"><option value="openai/gpt-5-mini"><option value="anthropic/claude-sonnet-5.5"><option value="anthropic/claude-opus-5.5"></datalist></div>
+          <div class="row"><label class="switch small"><input type="checkbox" id="hlpAct"> let it operate the tool (open views, fill fields, press buttons, run experiments)</label></div>
+          <div class="row"><label class="switch small"><input type="checkbox" id="hlpAsk"> ask me before it presses a button or runs an experiment</label></div>
+        </div>
+        <div class="hlp-set" id="setChatgpt">
+          <h3 class="set-sub">Run it on your ChatGPT plan</h3>
+          <p class="muted small">Instead of OpenRouter credit, Prometheus can run on your ChatGPT plan (OpenAI names Plus and Pro). Nothing is spent; its questions count against your plan’s usage limits. You sign in on OpenAI’s own page in your browser; the sign-in stays on this computer and is never shown to this page. Once signed in, its models also appear under External models, for Compare, Try them, the judge and experiments. Outside agents over MCP use it only if you allow them to use external models (Agents).</p>
+          <div class="row"><button id="cgSignIn" type="button">Continue with ChatGPT</button><button class="ghost" id="cgSignOut" type="button" hidden>Sign out</button><a class="btn-link ghost" id="cgManage" href="https://chatgpt.com/settings/usage?tab=overview" target="_blank" rel="noopener" hidden>Manage usage</a></div>
+          <p class="small" id="cgStat"></p>
+          <div class="row" id="cgPick" hidden><label class="small muted">ChatGPT model <select id="cgModel"></select></label><button class="ghost" id="cgModels" type="button">Refresh list</button><button id="cgUse" type="button">Use it for Prometheus</button><button class="ghost" id="cgBack" type="button">Back to OpenRouter</button></div>
+        </div>
+      </div>
+      <div class="set-block" id="setHelp">
+        <h2>Help and about</h2>
+        <p class="muted small">The full manual ships with the app and works offline: installing and running it, every view and instrument, Prometheus, MCP for agents, settings, where your data is kept, troubleshooting, the glossary and the questions it answers.</p>
+        <div class="row"><a class="btn-link" id="stHelp" href="help.html" target="_blank">Open the manual</a><a class="btn-link ghost" href="help.html#install" target="_blank">Install and run</a><a class="btn-link ghost" href="help.html#trouble" target="_blank">Troubleshooting</a><a class="btn-link ghost" id="stAbout" href="about.html" target="_blank" rel="noopener">About</a></div>
+        <p class="muted small" id="stVersion">Made by Sail with Claude.</p>
+      </div>
+      <div class="set-block" id="setEngine"><h2>Engine log</h2></div>
+    </section>
+
+    <section class="tab hidden" id="tab-lineage">
+      <div class="set-block">
+        <h2>Who this model is</h2>
+        <p class="muted small">A signed fingerprint of its numbers, and a record of its family and training. Change one number and it no longer matches.</p>
+        <div id="lnId" class="ln-id"></div>
+        <div class="row"><button id="lnAdopt" class="hidden">Adopt this seed</button><button class="ghost" id="lnVerify">Check it</button><span class="small muted" id="lnStat"></span></div>
+      <p class="fx">Adopting writes a copy with its lineage record next to the model file (signed if you chose a key in Settings &gt; Profile &amp; keys); your download is unchanged. Checking only reads.</p>
+      </div>
+      <div class="set-block">
+        <h2>Growth rings</h2>
+        <p class="muted small">One signed ring for each stage it grew, the seed at the centre. Tap a ring (or focus it and press Enter).</p>
+        <p class="small muted hidden" id="lnRingsEmpty"></p>
+        <div class="ln-rings"><svg id="lnRings" viewBox="0 0 240 240" role="img" aria-label="growth rings"></svg><div id="lnRing" class="ln-id"></div></div>
+      </div>
+      <div class="set-block">
+        <h2>The signature in its weights</h2>
+        <p class="muted small">Given a prompt, the model answers with a signature that verifies against our certificate. <b>Birth</b>: public prompt, taught to every seed. <b>Tree</b> and each <b>ring</b>: secret prompts, rehearsed by Grow.</p>
+        <div class="row"><button class="ghost" id="lnMarks">Ask it for its signature</button><span class="small muted" id="lnMarksStat"></span></div>
+      <p class="fx">Runs the model on a few prompts. Changes nothing.</p>
+        <div id="lnMarksOut" class="ln-id"></div>
+      </div>
+      <div class="set-block">
+        <h2>Grow it</h2>
+        <p class="muted small">Make it bigger without changing its answers, then train it further. The result is signed as the next generation.</p>
+        <div class="row">
+          <label class="small muted">wider <select id="lnWidth"><option value="1">same width</option><option value="2" selected>×2</option></select></label>
+          <label class="small muted">new layers <select id="lnDepth"><option>0</option><option>1</option><option selected>2</option><option>4</option></select></label>
+          <label class="small muted">text <select id="lnData"><option value="street">its street</option><option value="all" selected>all streets</option><option value="file">a text file…</option></select></label>
+          <label class="small muted">steps <input class="w-6em" type="number" id="lnSteps" value="1500" min="100" max="20000" step="100"></label>
+          <label class="small muted">on <select id="lnDevice"><option value="cpu" selected>CPU</option><option value="cuda">GPU</option></select></label>
+        </div>
+        <div class="row hidden" id="lnFileRow"><input class="grow" type="text" id="lnFile" placeholder="full path to a .txt file" aria-label="full path to a text file"></div>
+        <p class="small muted" id="lnEst" aria-live="polite"></p>
+        <div class="row"><button id="lnGrow">Grow and train</button><button type="button" class="ghost hidden" id="lnGrowAnyway">Grow anyway</button><span class="small muted" id="lnGrowStat"></span></div>
+      <p class="fx" id="lnFx">Writes a new model file, signed as the next generation; the parent is unchanged. Uses the CPU or the GPU for the time estimated above; Stop keeps nothing half-made.</p>
+        <canvas id="lnCurve" class="hidden w-full d-block mt-6" role="img" aria-label="Chart: training loss while the model grows"></canvas>
+        <p class="small muted" id="lnGrowOut"></p>
+        <div class="row hidden" id="lnLoadRow"><button id="lnLoad">Open the grown model</button></div>
+      </div>
+      <div class="set-block">
+        <h2>The scorecard</h2>
+        <p class="muted small">Your line next to real models, measured the same way.</p>
+        <div class="scroll"><table id="lnTable"><thead><tr><th>model</th><th>numbers</th><th>layers × width</th><th title="lower is better">bits / char, street</th><th title="lower is better">bits / char, other text</th><th>understanding</th><th title="the phase shift">copying</th><th>look-back heads</th></tr></thead><tbody></tbody></table></div>
+        <p class="small muted" id="lnNote"></p>
+      </div>
+    </section>
+
+    <section class="tab hidden" id="tab-commons">
+      <p class="muted">A seed line is one small model that many people grow together. Each person trains a <b>branch</b> on their own text; anyone combines branches with a <b>recipe</b>, a short list of ingredients, each pinned by its hash. A recipe is checked, not trusted: every file, record and signature is verified before anything is built, the same recipe gives the same bytes on any computer, and a bad ingredient can be found and left out. Signing is optional: by default nothing you do here carries your name.</p>
+      <div class="row cm-line"><span class="k m-0">line</span><span id="cmLine" class="small">…</span><button class="ghost small" id="cmFetch" hidden>Download the seed (1 MB)</button></div>
+      <p class="fx" id="cmLineNote">Two lineage paths. <b>Trained here</b>: branches of a tiny seed trained in PSI on your own text, each with a trace anyone can replay. <b>Public models</b>: fine-tunes people already published on Hugging Face, merged by recipe (Recipes, section 5). The first seed line is stories260K by Andrej Karpathy (llama2.c, MIT): 260,032 numbers that write small children’s stories. The download is pinned to one commit of karpathy/tinyllamas on Hugging Face and checked against its SHA-256; it is raw numbers, never a pickle.</p>
+      <div class="row cm-tabs" role="tablist"><button class="ghost small on" data-cm="recipes" role="tab">Recipes</button><button class="ghost small" data-cm="contribute" role="tab">Contribute</button><button class="ghost small" data-cm="verify" role="tab">Verify</button><button class="ghost small" id="cmToProfile" type="button">Profile &amp; keys (Settings) ›</button><span class="k m-0" id="cmStat"></span><button class="ghost small" id="cmStop" hidden>Stop</button></div>
+
+      <div data-cm-panel="recipes">
+        <p class="k mt-18">1 · find a recipe</p>
+        <div class="row"><input id="cmSearch" class="grow" placeholder="search recipes on Hugging Face (tag psi-recipe)" aria-label="search recipes"><select id="cmSort" aria-label="sort recipes"><option value="downloads">Most downloads</option><option value="likes">Most likes</option><option value="trendingScore">Trending</option><option value="createdAt">Recently created</option><option value="lastModified">Recently updated</option></select><button class="ghost hf-send" id="cmBrowse">🤗 Browse Hugging Face</button></div>
+        <div id="cmFound" class="cm-list" data-hf></div>
+        <div class="row"><input id="cmAddr" class="grow" placeholder="or an address: hf://owner/repo/recipe.json, a GitHub or https:// link, or a file on this computer" aria-label="recipe address"><button id="cmImport">Import</button></div>
+        <p class="fx">Importing reads one small JSON file. It is data: nothing in it runs. Addresses on this computer’s network and plain http are refused.</p>
+        <p class="k mt-18">2 · your recipes: check, then build</p>
+        <div id="cmRecipes" class="cm-list"></div>
+        <div id="cmCheck" class="out minh-0 cm-detail"></div>
+        <div class="row" id="cmBuildRow" hidden><label class="small muted"><input type="checkbox" id="cmGguf" checked> also write a GGUF (runs in Settings &gt; Models)</label><button id="cmBuild">Build it</button><button class="ghost" id="cmDownload">Download the finished model</button><button class="ghost" id="cmRecover" hidden>Recover the missing branch and build</button><button class="ghost" id="cmPartial" hidden>Build without the missing</button><button class="ghost small" id="cmBisect">Which branch hurts?</button><button class="ghost small" id="cmUse">I used it (signed)</button><button class="ghost small" id="cmCosign" hidden>Sign as The Emergence Machine</button></div>
+        <p class="fx" id="cmBuildFx">Build fetches each missing file from the first address that gives the right bytes, combines them with the pinned method in float64 and rounds once: the result must hash to what the recipe expects. Download skips the build and checks the published model’s bytes instead.</p>
+        <div id="cmBuilt" class="out minh-0 cm-detail"></div>
+        <p class="k mt-18">3 · models built here</p>
+        <div id="cmModels" class="cm-list"></div>
+        <p class="k mt-18">4 · make a recipe from branches here</p>
+        <div id="cmPick" class="cm-list"></div>
+        <div class="row"><input id="cmRName" placeholder="recipe name" aria-label="recipe name"><label class="small muted">method <select id="cmPlugin"></select></label><button id="cmMake">Make the recipe</button><button class="ghost" id="cmSearchBest">Find the best subset</button></div>
+        <p class="fx" id="cmPluginAbout"></p>
+        <p data-hf class="k mt-22">5 · the second path: merge public models from Hugging Face</p>
+        <p data-hf class="muted small">Fine-tunes of one base that people already published: an instruct model, a coder, a model for another language. A recipe pins each one by repo, commit and the hash Hugging Face publishes for every weight file, so nothing has to be uploaded and anyone can rebuild the same bytes. Their training happened elsewhere, so Verify shows it as a claim (their model cards), not a replay.</p>
+        <div data-hf class="row"><input id="cmHfBase" class="grow" value="Qwen/Qwen2.5-0.5B" aria-label="base model on Hugging Face"><button class="ghost hf-send" id="cmHfFind">Find models that merge with it</button></div>
+        <div data-hf id="cmHfFound" class="cm-list cm-hf"></div>
+        <div data-hf class="row" id="cmHfRow" hidden><input id="cmHfName" placeholder="recipe name" aria-label="recipe name"><label class="small muted">method <select id="cmHfMethod"><option value="task_arithmetic">task arithmetic</option><option value="average">average</option><option value="ties">TIES</option></select></label><label class="small muted">λ <input id="cmHfLam" type="number" class="w-5em" min="0" max="2" step="0.1" value="0.5"></label><label class="small muted">config and chat template from <select id="cmHfCarry"></select></label><button class="hf-send" id="cmHfMake">Make the recipe</button></div>
+        <p data-hf class="fx" id="cmHfFx" hidden>Downloads the base and each chosen model once (each file checked against its hash), merges them tensor by tensor on the CPU, and writes the recipe with the hash the result must have. Task arithmetic: base + λ × the sum of each model’s change (Ilharco et al. 2023).</p>
+      </div>
+
+      <div data-cm-panel="contribute" hidden>
+        <p class="k mt-18">train a branch on your text</p>
+        <p class="muted small">Your text stays on this computer. What can leave it, only if you publish: the change your training made (about 1 MB), a record of how, and a trace that lets someone you give the text to replay your training and see it is real.</p>
+        <textarea id="cmText" rows="7" class="w-full" placeholder="paste a few pages or more of text you have the right to share: your own writing, or text whose licence allows it" aria-label="training text"></textarea>
+        <div class="row"><label class="small muted"><input type="checkbox" id="cmPractice"> use the practice text instead (the opening of Peter Pan, public domain)</label></div>
+        <details data-hf><summary class="small">or text from a Hugging Face dataset</summary><div id="hfTextBox"></div></details>
+        <div class="row"><input id="cmBName" placeholder="branch name" aria-label="branch name"><input id="cmSubject" placeholder="subject (e.g. fables, my town)" aria-label="subject">
+          <label class="small muted">licence <select id="cmLicence"><option value="CC-BY-4.0">my own writing: CC BY 4.0</option><option value="CC0-1.0">my own writing: CC0</option><option value="public domain">public domain</option><option value="CC-BY-SA-4.0">CC BY-SA 4.0</option><option value="ODC-By-1.0">ODC-By 1.0</option></select></label>
+          <label class="small muted">steps <input id="cmSteps" type="number" class="w-5em" min="20" max="5000" value="200"></label><button id="cmTrain">Train the branch</button></div>
+        <p class="fx">On the CPU, one thread (so anyone can replay it exactly): about 0.1 s a step, plus half a minute once to write the stories it rehearses so it keeps what it knew. It starts from the seed. The record is signed only if you chose a key in Profile &amp; keys.</p>
+        <div id="cmTrained" class="out minh-0 cm-detail"></div>
+        <p class="k mt-18">your branches</p>
+        <div id="cmBranches" class="cm-list"></div>
+        <div class="row" data-hf><input id="cmRepo" class="grow" placeholder="Hugging Face repo to publish to: owner/name" aria-label="repo"><button class="ghost" id="cmPrepare">Prepare (shows what would be sent)</button></div>
+        <p class="fx" data-hf>Publishing pushes with your own Hugging Face token (Settings &gt; Hugging Face), after you confirm the list of files. Nothing is sent without that.</p>
+        <div id="cmOutbox" class="out minh-0 cm-detail"></div>
+      </div>
+
+      <div data-cm-panel="verify" hidden>
+        <p class="k mt-18">check anyone’s claims</p>
+        <p class="muted small">Every line says how strong it is. <b>Proof</b>: checked here exactly (signatures, hashes, scores re-measured). <b>Evidence</b>: makes it likely (training segments replayed, closeness to the parent’s weights). <b>Claim</b>: what the record says and nobody can check, such as which app trained it. The same checks run outside PSI: <code>python src/verify_lineage.py FILE --replay 3 --online</code>.</p>
+        <div class="row"><select id="cmVItem" class="grow" aria-label="what to verify"></select><label class="small muted">replay <input id="cmVReplay" type="number" class="w-5em" min="0" max="20" value="3"> segments</label><label class="small muted"><input type="checkbox" id="cmVOnline"> online (published keys, public log)</label><button id="cmVerify">Verify</button></div>
+        <div id="cmReport" class="out minh-0 cm-detail"></div>
+      </div>
+
+    </section>
+
+    <section class="tab hidden" id="tab-file">
+      <div class="grid2" id="facts"><div class="file-empty"><p class="muted">No model is open yet. Choose one in Settings to see what its file says about itself: name, size, layers and every value in its header.</p><button type="button" id="fileChoose">Choose a model</button></div></div>
+      <p class="cond file-eng" id="fileEngines">This view reads the GGUF file the <span class="term" data-term="local engine">local engine</span> runs. Neural net and Anatomy read another copy: the unpacked folder (bf16 safetensors) the <span class="term" data-term="inside engine">inside engine</span> loads, set in Settings.</p>
+      <div class="scroll hidden" id="fileTypesWrap"><p class="k">weights by storage type (from the tensor list in the header)</p><table id="fileTypes"><thead><tr><th>type</th><th>tensors</th><th>parameters</th><th>bytes</th><th>bits per parameter</th></tr></thead><tbody></tbody></table></div>
+      <div class="scroll hidden" id="metaWrap"><table id="meta"><thead><tr><th>key</th><th>value</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small" id="fileNote"></p>
+    </section>
+    <section class="tab hidden" id="tab-self">
+      <div id="selfRoot"></div>
+    </section>
+  </main>
+</div>
+<div class="err hidden" id="err" role="alert"></div>
+<script src="gguf-header.js"></script>
+<script src="em.js"></script>
+<script src="psi-ui.js"></script>
+<script src="elevel-lexicon.js"></script>
+<script src="lexicon-compact.js"></script>
+<script src="paths.js"></script>
+<script src="neural.js"></script>
+<script src="embed.js"></script>
+<script src="understanding-training.js"></script>
+<script src="understanding-tests.js"></script>
+<script src="understand.js"></script>
+<script src="emergence.js"></script>
+<script src="hf-push.js"></script>
+<script src="lesion.js"></script>
+<script src="battery-data.js"></script>
+<script src="lexicon-order.js"></script>
+<script src="sensing.js"></script>
+<script src="fight-data.js"></script>
+<script src="fight.js"></script>
+<script src="connector-data.js"></script>
+<script src="connectors.js"></script>
+<script src="ladder-data.js"></script>
+<script src="ladder.js"></script>
+<script src="machine.js"></script>
+<script src="jobs-status.js"></script>
+<script src="app.js"></script>
+<script src="ctx-limit.js"></script>
+<script src="lineage.js"></script>
+<script src="self-data.js"></script>
+<script src="selfview.js"></script>
+<script src="shell.js"></script>
+<script src="settings.js"></script>
+<script src="guardrails.js"></script>
+<script src="anatomy.js"></script>
+<script src="features.js"></script>
+<script src="timeline-data.js"></script>
+<script src="timeline.js"></script>
+<script src="commons.js"></script>
+<script src="design-core.js"></script>
+<script src="design-data.js"></script>
+<script src="design.js"></script>
+<script src="guide-data.js"></script>
+<script src="prometheus-motion.js"></script>
+<script src="helper.js"></script>
+<script src="chatgpt-set.js"></script>
+<script src="hf-set.js"></script>
+<script src="hf-pull.js"></script>
+<script src="voice.js"></script>
+<script src="version.js"></script>
+</body>
+</html>

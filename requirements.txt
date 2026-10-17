@@ -1,0 +1,13 @@
+# The inside-the-model engine (src/trace_server.py and the views that look inside: Neural net, Anatomy,
+# Understanding, Emergence, Tipping point, Sensing surface, Fight class, Connectors) and model growing.
+# Python 3.12. Install PyTorch for your GPU first (https://pytorch.org/get-started/locally/), e.g. CUDA 12.4:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+# then: pip install -r requirements.txt
+# Tested with torch 2.6.0+cu124, transformers 5.3.0, numpy 2.1.2, safetensors 0.6.2.
+torch>=2.6   # the first version whose torch.load refuses pickled code by default
+transformers>=5.3,<5.4   # 5.4 and later refuse to save a model loaded from a GGUF (convert_bf16.py)
+accelerate>=1.0   # transformers needs it to load a GGUF at all
+numpy>=1.26
+safetensors>=0.4
+gguf>=0.10
+cryptography>=42

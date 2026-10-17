@@ -1,0 +1,51 @@
+Parameter Space Inspector
+Copyright (c) 2026 The Emergence Machine (https://emergencemachine.com)
+
+The source code in this repository is licensed under the Apache License, Version 2.0 (see LICENSE).
+Redistributions and derivative works must keep this NOTICE file (section 4(d) of the licence).
+
+The following are NOT covered by the Apache License (and section 6 of the licence grants no
+rights to the name or logos either):
+
+  The Emergence Machine's content and brand
+    src/ui/lexicon-compact.js       the Emergence Lexicon (concept names, definitions, derivations)
+    research/results/heldout-*.txt  full essay texts (Emergence Parameters, The Arena, The Sensing
+                                    Surface, Trust) used as held-out test text
+    src/ui/em-logo-*.png, and the name and logo of The Emergence Machine
+  © The Emergence Machine, all rights reserved. They are included so the app works as published;
+  you may run and modify the app with them, but not republish them separately or use the name or
+  logo for your own product. Replace them in a fork you distribute.
+
+Third-party material
+
+  Model weights are not included. The app runs models you download yourself, under their own
+  licences. The measurements and small derived files in src/ui/*-data.js, research/results/ and assets/
+  come from:
+    Qwen3-4B (Alibaba Cloud)                       Apache License 2.0
+      assets/control-vectors/*.gguf is derived from Qwen3-4B's activations.
+    Pythia (EleutherAI)                            Apache License 2.0
+    Mistral-7B-v0.3 (Mistral AI)                   Apache License 2.0
+    gpt-oss-20b (OpenAI)                           Apache License 2.0
+    Granite 3.3 (IBM)                              Apache License 2.0
+    OLMo 2 (Allen Institute for AI)                Apache License 2.0
+    SmolLM2 (Hugging Face)                         Apache License 2.0
+    Phi-3.5-mini (Microsoft)                       MIT License
+    DeepSeek LLM 7B (DeepSeek)                     DeepSeek License Agreement
+
+  MUSE bilingual dictionaries (Facebook Research), CC BY-NC 4.0
+    https://github.com/facebookresearch/MUSE
+    Used to measure the concept atlas shown in the Self-portrait view. The dictionaries are not
+    included; src/ui/self-data.js holds statistics and a few example word pairs.
+
+  WikiText-103 (Merity et al., Salesforce), CC BY-SA 3.0
+    Short passages quoted as neuron examples (see src/mcp.js).
+
+  stories260K (Andrej Karpathy, karpathy/tinyllamas), MIT License: the first seed line; downloaded by the
+    app, not included. src/lines/stories260k-*.json hold public-domain Project Gutenberg text (licence and
+    trademark text removed) and short stories that model wrote.
+
+  llama.cpp (ggml-org), MIT License: run as a separate program, not included.
+  Electron (OpenJS Foundation), MIT License.
+
+  The self-knowledge test items behind the stored Fight class results were generated with language
+  models through OpenRouter and checked by script; the items themselves are not included.

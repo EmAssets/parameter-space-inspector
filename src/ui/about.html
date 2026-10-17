@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>About · Parameter Space Inspector</title>
+<style>
+:root { --bg: #08080a; --panel: #121216; --ink: #edebe4; --ink2: #b2b5bf; --ink3: #7d818c; --line: #24242b; --accent: #ffc36b;
+  --display: Georgia, "Newsreader", "Times New Roman", serif; --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg: #f6f5f1; --panel: #ffffff; --ink: #17171a; --ink2: #4d5059; --ink3: #7d818c; --line: #e2e0d8; --accent: #a8620a; color-scheme: light; } }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0 16px; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--body); }
+main { max-width: 620px; margin: 0 auto; padding-block: 64px 72px; }
+.eyebrow { font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink3); margin: 0 0 14px; }
+h1 { font: 600 clamp(32px, 6vw, 44px)/1.08 var(--display); margin: 0 0 6px; }
+.ver { font: 13px var(--mono); color: var(--ink3); margin: 0 0 22px; }
+.lede { color: var(--ink2); margin: 0 0 26px; }
+.made { font: 600 22px/1.3 var(--display); margin: 0 0 26px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.made span { color: var(--accent); }
+h2 { font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink3); margin: 28px 0 8px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+dt { color: var(--ink); } dd { margin: 0; color: var(--ink2); }
+p { color: var(--ink2); }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@media (max-width: 480px) { dl { grid-template-columns: 1fr; } dd { margin-bottom: 6px; } }
+
+/* The app's header (index.html), so a reader can go back: logo + wordmark, "Back to the app", and the gear for settings. */
+.app-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 -16px; padding: 10px 22px; min-height: 56px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.app-brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; min-width: 0; white-space: nowrap; }
+.app-brand img { width: 28px; height: 28px; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); flex: 0 0 auto; }
+.app-brand-k { display: none; }
+.app-brand-n { font: 500 17px var(--body); }
+.app-brand-n em { font-style: normal; color: var(--ink2); }
+.app-brand-n { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-size: 20px; }
+.app-top-r { display: flex; align-items: center; gap: 10px; }
+.app-back, .app-gear { height: 32px; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); text-decoration: none; font-size: 13px; }
+.app-back { padding: 0 14px; }
+.app-gear { width: 32px; justify-content: center; }
+.app-gear svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.app-back:hover, .app-gear:hover, .app-brand:hover .app-brand-n { color: var(--ink); border-color: var(--ink3); }
+.app-back:focus-visible, .app-gear:focus-visible, .app-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+html { scroll-padding-top: 68px; }
+h2, h3, h4 { scroll-margin-top: 68px; }
+nav.toc { top: 72px; max-height: calc(100vh - 88px); }
+@media (max-width: 760px) { .app-brand-k { display: none; } .app-brand-n { font-size: 15px; } .app-back { padding: 0 10px; } }
+@media (max-width: 420px) { .app-brand-n { display: none; } }
+</style>
+</head>
+<body>
+<header class="app-top">
+  <a class="app-brand" href="index.html" data-to-app="" title="Back to the Parameter Space Inspector"><img src="em-logo-150.png" srcset="em-logo-150.png 1x, em-logo-300.png 2x" width="28" height="28" alt="The Emergence Machine"><span class="app-brand-k">The Emergence Machine</span><span class="app-brand-n">Parameter Space <em>Inspector</em></span></a>
+  <nav class="app-top-r" aria-label="Back to the app">
+    <a class="app-back" href="index.html" data-to-app="">← Back to the app</a>
+    <a class="app-gear" href="index.html#settings" data-to-app="settings" title="Model settings" aria-label="Model settings"><svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></a>
+  </nav>
+</header>
+
+<main>
+  <p class="eyebrow">The Emergence Machine</p>
+  <h1>Parameter Space Inspector</h1>
+  <p class="ver" id="ver">version</p>
+  <p class="lede">Instruments for looking inside a language model: how it answers, when its abilities appeared in training, what it depends on, what it understood, and whether it knows itself. A laboratory for the ideas of <a href="https://emergencemachine.com" target="_blank" rel="noopener">The Emergence Machine</a>, tested on a real network.</p>
+  <p class="made">Made by <span>Sail</span> (<a href="https://x.com/shaelsrv" target="_blank" rel="me noopener">@shaelsrv</a> on X) with <span>Claude</span>.</p>
+
+  <h2>Built on</h2>
+  <dl>
+    <dt>Models</dt><dd>Qwen3-4B (Alibaba, Apache-2.0) · Pythia (EleutherAI, Apache-2.0) · frontier models through OpenRouter, optional</dd>
+    <dt>Engines</dt><dd>llama.cpp · PyTorch · Hugging Face Transformers · Electron · Node.js</dd>
+    <dt>Guide</dt><dd>Prometheus, the AI guide, runs on a model you choose through OpenRouter (default Claude Haiku 4.5)</dd>
+    <dt>Text</dt><dd>neuron examples from a Wikipedia sample (WikiText-103, CC BY-SA)</dd>
+    <dt>Ideas</dt><dd>the essays of The Emergence Machine: The Arena, Abstraction, Language, The Sensing Surface, What Kind of Fight Is This?</dd>
+  </dl>
+
+  <h2>More</h2>
+  <dl>
+    <dt>Manual</dt><dd><a href="help.html">How to use every part of it</a></dd>
+    <dt>Site</dt><dd><a href="https://emergencemachine.com" target="_blank" rel="noopener">emergencemachine.com</a> · <a href="https://emergencemachine.com/chat/" target="_blank" rel="noopener">ask the site’s Prometheus</a></dd>
+    <dt>Follow</dt><dd><a href="https://x.com/shaelsrv" target="_blank" rel="me noopener">@shaelsrv</a> on X · <a href="https://emergencemachine.com/links/" target="_blank" rel="noopener">every link: emergencemachine.com/links</a></dd>
+    <dt>Licence</dt><dd>Apache-2.0 (code); see NOTICE for the lexicon, essays and logos</dd>
+  </dl>
+</main>
+<script src="version.js"></script>
+<script src="about-page.js"></script>
+</body>
+</html>

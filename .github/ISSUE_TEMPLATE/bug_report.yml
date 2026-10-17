@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in the app does not work as the manual says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting. Please check the manual's Troubleshooting section first (Settings > Help). Never paste keys or tokens here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      placeholder: "In Generate, pressing Load shows ... ; I expected ..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open ...  2. Press ...  3. See ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PSI version
+      description: Settings > Help > About shows it.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Operating system, GPU and memory, llama.cpp build (`llama-server --version`), model file, Node and Python versions.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Error message or log
+      description: The message shown in the app, or the terminal output. Remove any personal paths you prefer not to share.
+      render: text
