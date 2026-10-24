@@ -40,6 +40,17 @@ def _clean_texts(xs, what, lo=2):
     return out
 
 
+def _history(history, lo=0):
+    """Earlier turns of a conversation, as given: [{role: system|user|assistant, content}], at most 24."""
+    out = []
+    for m in (history or [])[:24]:
+        if not isinstance(m, dict): continue
+        r, c = str(m.get("role", "user")), re.sub(r"\s+", " ", str(m.get("content", ""))).strip()[:2000]
+        if r in ("system", "user", "assistant") and c: out.append({"role": r, "content": c})
+    if len(out) < lo: raise ValueError(f"attractor: history needs at least {lo} turns")
+    return out
+
+
 def _bits(p):
     p = p[p > 0]
     return float(-(p * torch.log2(p)).sum())
@@ -124,12 +135,12 @@ class AttractorLab(context_mod.ContextLab):
 
     # ── read ─────────────────────────────────────────────────────────────────────────────────────────────────────
     @torch.no_grad()
-    def read(self, name, text, last=48):
+    def read(self, name, text, last=48, history=None):
         D = self._dir(name); tok = self.t.tok
-        text = str(text or "").strip()[:2000]
-        if not text: raise ValueError("attractor: text is required")
+        text = str(text or "").strip()[:2000]; hist = _history(history)
+        if not text and not hist: raise ValueError("attractor: text is required (or history)")
         with self.t.lock:
-            ids = self._msgs_ids([{"role": "user", "content": text}])
+            ids = self._msgs_ids(hist + ([{"role": "user", "content": text}] if text else []))
             hs = self.t.model(input_ids=ids, output_hidden_states=True).hidden_states
         L = len(hs) - 1; n = ids.shape[1]; s = max(0, n - int(last))
         grid = []
@@ -149,14 +160,14 @@ class AttractorLab(context_mod.ContextLab):
         return "same" if words == ref else "different"
 
     @torch.no_grad()
-    def funnel(self, question, options=None, k=8, points=10, n_new=40, temperature=1.0):
-        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]
+    def funnel(self, question, options=None, k=8, points=10, n_new=40, temperature=1.0, history=None):
+        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; hist = _history(history)
         if not question: raise ValueError("attractor: question is required")
         options = context_mod._clean_options(options)
         k, points, n_new = max(2, min(24, int(k))), max(2, min(24, int(points))), max(8, min(128, int(n_new)))
         temperature = max(0.2, min(2.0, float(temperature))); tok, m = self.t.tok, self.t.model
         with self.t.lock:
-            ids = self._msgs_ids([{"role": "user", "content": question}])
+            ids = self._msgs_ids(hist + [{"role": "user", "content": question}])
             g = self._greedy(ids, n_new)
             answer = tok.decode(g, skip_special_tokens=True).strip()
             ref = re.findall(r"\w+", answer.lower())[:6]
@@ -184,7 +195,7 @@ class AttractorLab(context_mod.ContextLab):
                 layers.append({"layer": l, "bits": round(_bits(pl), 3), "rank_of_first": int((pl > pl[first]).sum()) + 1 if first is not None else None})
         inner = [r for r in rows if r["t"] < len(g)]   # at t = len(g) the sample continues the whole greedy answer: 1 by construction
         lock = next((r["t"] for i, r in enumerate(inner) if all(x["same_outcome"] >= 0.9 for x in inner[i:])), None)
-        return {"question": question, "answer": answer, "target": target, "options": options, "k": k, "temperature": temperature,
+        return {"question": question, "answer": answer, "target": target, "options": options, "k": k, "temperature": temperature, "history_turns": len(hist),
                 "points": rows, "lock_in": lock, "pieces": len(g), "layers": layers,
                 "notes": ["same_outcome: share of k sampled continuations from that point that end in the greedy answer's outcome "
                           + ("(the first named answer they mention)" if options else "(the same first six words)") + ".",
@@ -197,40 +208,48 @@ class AttractorLab(context_mod.ContextLab):
         return self._odds(fids, options, frame)[0][target], ids
 
     @torch.no_grad()
-    def path(self, name, question, options, frame="", target=None, max_strength=4.0, steps=5, n_new=32, pieces=None, control=True):
-        D = self._dir(name); question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]
+    def path(self, name, question, options, frame="", target=None, max_strength=4.0, steps=5, n_new=32, pieces=None, control=True, history=None, turns=None, strengths=None):
+        D = self._dir(name); question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; hist0 = _history(history)
+        # turns: the user's text at each step (the last one repeats); strengths: an explicit list in place of the up-and-down sweep.
+        turns = [re.sub(r"\s+", " ", str(t)).strip()[:1000] for t in (turns or []) if str(t).strip()][:33]
+        explicit = [max(-12.0, min(12.0, float(s))) for s in (strengths or [])][:33] if isinstance(strengths, list) else None
         options = context_mod._clean_options(options); frame = str(frame or "")[:200]
         if not question: raise ValueError("attractor: question is required")
         if len(options) < 2: raise ValueError("attractor: path needs at least two named answers (options)")
         target = target if target in options else list(options)[0]
         steps, n_new, mx = max(2, min(9, int(steps))), max(4, min(96, int(n_new))), max(0.5, min(12.0, float(max_strength)))
         up = [round(-mx + 2 * mx * i / (2 * steps - 2), 3) for i in range(2 * steps - 1)]
-        sweep = up + up[::-1][1:]
+        sweep = explicit if explicit else up + up[::-1][1:]
+        if explicit: up = sorted(set(explicit))   # fresh conversations at each strength used
+        turn_text = lambda i: turns[min(i, len(turns) - 1)] if turns else question
         l = D["layer"]; gap = abs(D["gaps"][l]); tok = self.t.tok
         g = torch.Generator().manual_seed(1); rnd = torch.randn(D["vecs"][l].shape, generator=g).to(self.t.device); rnd = rnd / rnd.norm()
 
         def run(vec):
-            hist, out = [], []
+            hist, out = list(hist0), []
             for i, s in enumerate(sweep):
-                msgs = hist + [{"role": "user", "content": question}]
+                msgs = hist + [{"role": "user", "content": turn_text(i)}]
                 h = self._steer(l, vec * gap, s)
                 try:
                     share, ids = self._share(msgs, options, frame, target)
                     ans = tok.decode(self._greedy(ids, n_new), skip_special_tokens=True).strip()
                 finally: h.remove()
-                out.append({"step": i, "strength": s, "dir": "up" if i < len(up) else "down", "share": round(share, 4), "answer": ans[:200]})
+                out.append({"step": i, "strength": s, "dir": "given" if explicit else "up" if i < len(up) else "down", "share": round(share, 4), "answer": ans[:200], **({"turn": turn_text(i)} if turns else {})})
                 hist = msgs + [{"role": "assistant", "content": ans}]
             return out
 
         def fresh(vec):
-            res = []
+            res = []   # no history at all: each strength once, with the first turn's text (or every distinct turn text, when turns are given)
+            texts = list(dict.fromkeys(turns)) if turns else [question]
             for s in up:
-                h = self._steer(l, vec * gap, s)
-                try: res.append({"strength": s, "share": round(self._share([{"role": "user", "content": question}], options, frame, target)[0], 4)})
-                finally: h.remove()
+                for t in texts:
+                    h = self._steer(l, vec * gap, s)
+                    try: res.append({"strength": s, "share": round(self._share([{"role": "user", "content": t}], options, frame, target)[0], 4), **({"turn": t} if turns else {})})
+                    finally: h.remove()
             return res
 
         def loop_area(rows):
+            if explicit: return None   # no up-and-down sweep: no loop to measure
             u = {r["strength"]: r["share"] for r in rows if r["dir"] == "up"}; d = {r["strength"]: r["share"] for r in rows if r["dir"] == "down"}
             common = [s for s in u if s in d and s != up[-1]]
             return round(sum(abs(u[s] - d[s]) for s in common) / max(1, len(common)), 4)
@@ -250,17 +269,20 @@ class AttractorLab(context_mod.ContextLab):
             if len(pcs) >= 2:
                 order, seen = [], {}
                 for perm in list(itertools.permutations(range(len(pcs))))[:24]:
-                    ps = [pcs[i] for i in perm]; msgs = context_mod.messages(question, ps, [1] * len(ps))
+                    ps = [pcs[i] for i in perm]; msgs = hist0 + context_mod.messages(question, ps, [1] * len(ps))   # after any history given
                     key = self.render(msgs)   # a system piece stays the system message and "how to answer" stays after the question, so some orders render the same paper
                     if key not in seen: seen[key] = self._share(msgs, options, frame, target)[0]
-                    order.append({"order": list(perm), "share": round(seen[key], 4), "same_paper_as": next((o["order"] for o in order if o["share"] == round(seen[key], 4) and self.render(context_mod.messages(question, [pcs[i] for i in o["order"]], [1] * len(ps))) == key), None)})
-        fr = {r["strength"]: r["share"] for r in free}
-        memory = round(sum(abs(r["share"] - fr[r["strength"]]) for r in hyst if r["dir"] == "down") / max(1, sum(r["dir"] == "down" for r in hyst)), 4)
-        res = {"name": name, "layer": l, "question": question, "options": options, "frame": frame, "target": target, "sweep": sweep,
+                    order.append({"order": list(perm), "share": round(seen[key], 4), "same_paper_as": next((o["order"] for o in order if o["share"] == round(seen[key], 4) and self.render(hist0 + context_mod.messages(question, [pcs[i] for i in o["order"]], [1] * len(ps))) == key), None)})
+        fr = {(r["strength"], r.get("turn")): r["share"] for r in free}
+        fresh_of = lambda r: fr.get((r["strength"], r.get("turn")), fr.get((r["strength"], None)))
+        back = [r for r in hyst if r["dir"] in ("down", "given")]   # the turns compared with fresh: the way back down, or every given turn
+        memory = round(sum(abs(r["share"] - fresh_of(r)) for r in back) / max(1, len(back)), 4)
+        res = {"name": name, "layer": l, "question": question, "options": options, "frame": frame, "target": target, "sweep": sweep, "history_turns": len(hist0), "turns": turns or None,
                "hysteresis": hyst, "fresh": free, "loop_width": loop_area(hyst), "memory_vs_fresh": memory, **lock(hyst),
                "fresh_range": round(max(r["share"] for r in free) - min(r["share"] for r in free), 4),
                "control": {"hysteresis": ctrl, "loop_width": loop_area(ctrl), **lock(ctrl)} if ctrl else None,
-               "notes": ["One conversation: each turn asks the same question with the strength of that step; the model's own earlier answers stay as history.",
+               "notes": ["One conversation: each turn asks the question (or that step's turn text) with the strength of that step; the model's own earlier answers stay as history, after any history given.",
+                         "history_turns: earlier turns supplied as given (they are in the conversation, not in the fresh runs). With strengths given, dir is 'given', there is no loop, and memory_vs_fresh compares every turn with a fresh conversation at the same strength and text.",
                          "loop_width: mean |up - down| share of the target answer at the same strength. memory_vs_fresh: the down sweep against fresh conversations (no history) at the same strength.",
                          "locked: after the first turn the share never moved by 0.05, though fresh conversations at the same strengths range over fresh_range: the conversation's own history became an absorbing state (memory with no loop).",
                          "The control runs the same sweep with a random direction of the same size: a loop or lock it also shows is history, not the concept."]}
@@ -272,16 +294,16 @@ class AttractorLab(context_mod.ContextLab):
 
     # ── constraints ──────────────────────────────────────────────────────────────────────────────────────────────
     @torch.no_grad()
-    def constraint(self, name, prompts, frame, as_role="system", strength=1.0):
-        D = self._dir(name); prompts = _clean_texts(prompts, "prompts", 4)[:MAX_PROMPTS]
+    def constraint(self, name, prompts, frame, as_role="system", strength=1.0, history=None):
+        D = self._dir(name); prompts = _clean_texts(prompts, "prompts", 4)[:MAX_PROMPTS]; hist = _history(history)
         frame = re.sub(r"\s+", " ", str(frame or "")).strip()[:1000]
         if not frame: raise ValueError("attractor: frame (the constraint) is required")
         l = D["layer"]; gap = abs(D["gaps"][l]); a = max(0.1, min(12.0, float(strength)))
         g = torch.Generator().manual_seed(2); rnd = torch.randn(D["vecs"][l].shape, generator=g).to(self.t.device); rnd = rnd / rnd.norm()
 
-        def msgs(p, on):
-            if not on: return [{"role": "user", "content": p}]
-            return [{"role": "system", "content": frame}, {"role": "user", "content": p}] if as_role == "system" else [{"role": "user", "content": f"{frame} {p}"}]
+        def msgs(p, on):   # the history (if any) sits between the system frame and the prompt, on both sides
+            if not on: return hist + [{"role": "user", "content": p}]
+            return [{"role": "system", "content": frame}] + hist + [{"role": "user", "content": p}] if as_role == "system" else hist + [{"role": "user", "content": f"{frame} {p}"}]
 
         def kl(p, q): return float((p * (torch.log(p + 1e-12) - torch.log(q + 1e-12))).sum())
 
@@ -306,7 +328,7 @@ class AttractorLab(context_mod.ContextLab):
         with self.t.lock:
             free, held = side(False), side(True)
         L = len(free["dimensionality"])
-        return {"name": name, "layer": l, "frame": frame, "as": as_role, "prompts": len(prompts), "strength": a, "free": free, "constrained": held,
+        return {"name": name, "layer": l, "frame": frame, "as": as_role, "prompts": len(prompts), "strength": a, "history_turns": len(hist), "free": free, "constrained": held,
                 "change": {"answer_bits": round(held["answer_bits"] - free["answer_bits"], 4),
                            "susceptibility_ratio": round(held["susceptibility"] / free["susceptibility"], 3) if free["susceptibility"] else None,
                            "dimensionality_at_layer": round(held["dimensionality"][l - 1] - free["dimensionality"][l - 1], 2),

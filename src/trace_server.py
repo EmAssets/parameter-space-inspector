@@ -779,11 +779,12 @@ class H(BaseHTTPRequestHandler):
                 try:
                     if act == "list": r = {"directions": {k: {"layer": v["layer"], "pairs": v["pairs"], "pos": v["pos"], "neg": v["neg"]} for k, v in ATT.dirs.items()}}
                     elif act == "build": r = ATT.build(body.get("name"), body.get("pos"), body.get("neg"), body.get("layer"))
-                    elif act == "read": r = ATT.read(body.get("name"), body.get("text"), body.get("last", 48))
-                    elif act == "funnel": r = ATT.funnel(body.get("question"), body.get("options"), body.get("k", 8), body.get("points", 10), body.get("n_new", 40), body.get("temperature", 1.0))
+                    elif act == "read": r = ATT.read(body.get("name"), body.get("text"), body.get("last", 48), body.get("history"))
+                    elif act == "funnel": r = ATT.funnel(body.get("question"), body.get("options"), body.get("k", 8), body.get("points", 10), body.get("n_new", 40), body.get("temperature", 1.0), body.get("history"))
                     elif act == "path": r = ATT.path(body.get("name"), body.get("question"), body.get("options"), body.get("frame", ""), body.get("target"),
-                                                    body.get("max_strength", 4.0), body.get("steps", 5), body.get("n_new", 32), body.get("pieces"), body.get("control", True))
-                    elif act == "constraint": r = ATT.constraint(body.get("name"), body.get("prompts"), body.get("frame"), body.get("as", "system"), body.get("strength", 1.0))
+                                                    body.get("max_strength", 4.0), body.get("steps", 5), body.get("n_new", 32), body.get("pieces"), body.get("control", True),
+                                                    body.get("history"), body.get("turns"), body.get("strengths"))
+                    elif act == "constraint": r = ATT.constraint(body.get("name"), body.get("prompts"), body.get("frame"), body.get("as", "system"), body.get("strength", 1.0), body.get("history"))
                     else: return self._send(400, {"error": "attractor: action is one of list, build, read, funnel, path, constraint"})
                 except ValueError as e: return self._send(400, {"error": str(e)})
                 r["conditions"] = conditions(t0); return self._send(200, r)
