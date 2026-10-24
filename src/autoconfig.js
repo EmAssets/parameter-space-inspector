@@ -10,7 +10,7 @@
 const { python: PY } = require('./python.js');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const SMALL = 256 * 2 ** 20;
 const SUFFIX = /([-_.](q\d(_[0-9a-z]+)*|iq\d\w*|f16|f32|bf16|fp16|gguf|hf|safetensors|instruct-gguf))+$/i;
@@ -64,14 +64,16 @@ function candidates(root) {
 
 function convert(file, out, log) {
   const py = `
-import sys
+import os, sys
 from transformers import AutoModelForCausalLM, AutoTokenizer
-d, f, o = sys.argv[1], sys.argv[2], sys.argv[3]
+d, f, o, here = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 AutoModelForCausalLM.from_pretrained(d, gguf_file=f).save_pretrained(o)
 AutoTokenizer.from_pretrained(d, gguf_file=f).save_pretrained(o)
+sys.path.insert(0, here); import gguf_tok
+print(gguf_tok.repair(os.path.join(d, f), o))   # the rebuilt tokenizer drops tokens like <think>: put them back
 print("ok")`;
   return new Promise((resolve, reject) => {
-    const p = spawn(PY(), ['-c', py, path.dirname(file), path.basename(file), out], { env: require('./config.js').cacheEnv(), windowsHide: true });
+    const p = spawn(PY(), ['-c', py, path.dirname(file), path.basename(file), out, __dirname], { env: require('./config.js').cacheEnv(), windowsHide: true });
     let tail = ''; const keep = (d) => { tail = (tail + d).slice(-2000); };
     p.stdout.on('data', keep); p.stderr.on('data', keep);
     p.on('exit', (code) => (code === 0 && /ok\s*$/.test(tail) ? resolve(out) : reject(new Error(`conversion failed: ${tail.slice(-400)}`))));
@@ -96,7 +98,11 @@ async function pairFor(file, settings, log = () => {}) {
   if (found.length) return { modelDir: found[0].replace(/\\/g, '/'), how: 'matched by name and shape' };
   if (h.size <= SMALL) {
     const out = path.join(path.dirname(file), `${path.basename(file, '.gguf')}-hf`);
-    if (hasWeights(out) && same(s, weightsShape(out))) return { modelDir: out.replace(/\\/g, '/'), how: 'converted earlier' };
+    if (hasWeights(out) && same(s, weightsShape(out))) {
+      // folders converted before gguf_tok.py existed carry the faulty tokenizer; the repair is idempotent
+      spawnSync(PY(), [path.join(__dirname, 'gguf_tok.py'), file, out], { env: require('./config.js').cacheEnv(), windowsHide: true });
+      return { modelDir: out.replace(/\\/g, '/'), how: 'converted earlier' };
+    }
     await convert(file, out, log);
     return { modelDir: out.replace(/\\/g, '/'), how: 'converted from the GGUF file' };
   }
@@ -125,11 +131,12 @@ async function syncTrace({ file, config, tracer, log = () => {} }) {
 
 // What a user (or Prometheus) needs to see when something is off: both engines, and whether they agree.
 function check({ config, engine, file }) {
-  const st = config.settings, out = { local: file || st.lastModel || null, inside: (st.trace && st.trace.modelDir) || null, auto: !(st.trace && st.trace.auto === false), problems: [] };
+  const st = config.settings, out = { local: file || st.lastModel || null, inside: (st.trace && st.trace.modelDir) || null, auto: !(st.trace && st.trace.auto === false), problems: [], optional: [] };
   if (engine && !engine.exe) out.problems.push(engine.binDir ? `llama-server was not found in ${engine.binDir} (Settings: llama.cpp folder, or PSI_LLAMA_DIR)` : 'llama-server was not found: set the llama.cpp folder in Settings (or PSI_LLAMA_DIR), or put llama-server on the PATH');
   if (!out.local) out.problems.push('no local model chosen yet: pick a .gguf file in Settings > Models');
   else if (!fs.existsSync(out.local)) out.problems.push(`the local model file does not exist: ${out.local}`);
-  if (!out.inside) out.problems.push('the inside engine has no weights folder (Settings: a Hugging Face model folder, or PSI_TRACE_MODEL)');
+  // Not set up is not broken: Generate and the other basic views work without it. A folder that is set but missing or empty is a problem.
+  if (!out.inside) out.optional.push('the inside engine is not set up (optional, for Neural net, Anatomy and the other inside views): no weights folder (Settings: a Hugging Face model folder, or PSI_TRACE_MODEL)');
   else if (!fs.existsSync(out.inside)) out.problems.push(`the inside engine's weights folder does not exist: ${out.inside}`);
   else if (!hasWeights(out.inside)) out.problems.push(`the inside engine's folder has no model weights (no .safetensors): ${out.inside}`);
   if (out.local && fs.existsSync(out.local) && out.inside && fs.existsSync(out.inside)) {
@@ -141,7 +148,7 @@ function check({ config, engine, file }) {
   }
   out.engineRunning = !!(engine && engine.proc);
   out.ok = !out.problems.length;
-  if (!out.ok && out.local && fs.existsSync(out.local)) {
+  if ((!out.ok || out.optional.length) && out.local && fs.existsSync(out.local)) {
     // What would fix it: the weights folder that matches the local model, without converting anything here.
     const a = shape(header(out.local)), name = norm(path.basename(out.local));
     const roots = [...new Set([st.modelsDir, path.dirname(out.local)].filter(Boolean))];
@@ -172,15 +179,19 @@ async function sameModel({ engine, tracer, config }) {
   if (!st) return { checked: false, reason: 'the inside engine is not running (it starts on the first Neural net, Anatomy or experiment request)', gguf, modelDir, last };
   const v = tracer.verify(st);
   const per = [];
+  // Plus one chat prompt in the model's own template: plain sentences tokenize alike even when the inside engine's
+  // tokenizer lacks the template's special tokens (a GGUF-rebuilt Qwen3 tokenizer cut <think> into 3 pieces: ITERATIONS 13).
+  let chat = null;
+  try { chat = await engine.applyTemplate([{ role: 'user', content: 'Who wrote Hamlet?' }]); } catch (_) { /* no template: plain texts only */ }
   try {
-    for (const text of SAME_TEXTS) {
-      const a = await engine.tokenize(text, false);
+    for (const text of chat ? [...SAME_TEXTS, chat] : SAME_TEXTS) {
+      const a = await engine.tokenize(text, text === chat);
       const b = await tracer.nextTop(text, 5);
       const ia = a.map((t) => t.id), ib = b.ids || [];
       const na = await engine.next(ia, 5);
       const ta = new Set(na.top.map((t) => t.id)), tb = new Set((b.top || []).map((t) => t.id));
       const overlap = [...ta].filter((id) => tb.has(id)).length / Math.max(1, Math.min(5, ta.size, tb.size));
-      per.push({ text, ids_equal: ia.length === ib.length && ia.every((x, i) => x === ib[i]), local_ids: ia.length, inside_ids: ib.length,
+      per.push({ text, chat_template: text === chat, ids_equal: ia.length === ib.length && ia.every((x, i) => x === ib[i]), local_ids: ia.length, inside_ids: ib.length,
         top5_overlap: +overlap.toFixed(2), local_top: na.top.map((t) => t.piece), inside_top: (b.top || []).map((t) => t.piece) });
     }
   } catch (e) { return { checked: false, reason: `the check failed: ${e.message}`, gguf, modelDir: (st.conditions && st.conditions.model_dir) || modelDir, last }; }
@@ -188,7 +199,9 @@ async function sameModel({ engine, tracer, config }) {
     gguf, modelDir: (st.conditions && st.conditions.model_dir ? String(st.conditions.model_dir).replace(/\\/g, '/') : modelDir) };
   if (config) config.update({ trace: { pairs: { ...((config.settings.trace && config.settings.trace.pairs) || {}), [gguf]: rec } } });
   // Same tokenizer and at least 4 of the top 5 in common on average: the same model (allowing for quantisation).
-  return { checked: true, ...rec, same: rec.ids_equal && rec.top5_overlap >= 0.8, inside_note: v.note || null, sentences: per };
+  const ch = per.find((x) => x.chat_template);
+  const chatNote = ch && !ch.ids_equal ? `The two engines split the chat template differently (${ch.local_ids} pieces here, ${ch.inside_ids} inside): the inside engine's tokenizer is missing some of the model's special tokens, so it reads prompts the model was not trained on. Use the weights folder's own tokenizer files from the model's Hugging Face repo.` : null;
+  return { checked: true, ...rec, same: rec.ids_equal && rec.top5_overlap >= 0.8, inside_note: v.note || null, chat_note: chatNote, sentences: per };
 }
 
 // header/parser: the GGUF header in Node, also for engine.js (mixture-of-experts placement).

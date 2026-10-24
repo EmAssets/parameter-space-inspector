@@ -78,7 +78,7 @@ class TraceClient {
     if (!this.proc) {
       onStatus('starting the trace engine (PyTorch)…');
       const script = path.join(__dirname, 'trace_server.py');
-      this.proc = spawn(PY(), ['-u', script, '--model', this.modelDir, '--port', String(this.port)], { env: require('./config.js').cacheEnv({ PSI_TRACE_TOKEN: this.token, PSI_SAE_DIR: path.join(require('./config.js').DATA, 'sae') }), windowsHide: true });
+      this.proc = spawn(PY(), ['-u', script, '--model', this.modelDir, '--port', String(this.port)], { env: require('./config.js').cacheEnv({ PSI_TRACE_TOKEN: this.token, PSI_SAE_DIR: path.join(require('./config.js').DATA, 'sae'), PSI_OVERRIDE_DIR: path.join(require('./config.js').DATA, 'override-probes') }), windowsHide: true });
       this.proc.stdout.on('data', (d) => this.log(String(d).trim()));
       this.proc.stderr.on('data', (d) => { const s = String(d).trim(); if (s && !/Loading weights|Warning|warn\(/.test(s)) this.log(s); });
       const p = this.proc; p.on('exit', () => { if (this.proc === p) this.proc = null; });   // a late exit of a replaced engine must not clear the new one
@@ -89,7 +89,8 @@ class TraceClient {
       const b = await this.state();
       if (b) { if (!b.proven) throw this.unproven(); const v = this.verify(b); this.note = v.note; if (v.ok === false) throw new Error(v.note); return b; }
       if (!this.proc) throw new Error('The trace engine stopped while loading.');
-      if (Date.now() > deadline) throw new Error('The trace engine did not come up in 10 minutes.');
+      // Stuck, not slow: stop it so the next request starts a fresh engine instead of waiting on this one.
+      if (Date.now() > deadline) { try { this.proc.kill('SIGKILL'); } catch (_) { /* gone */ } this.proc = null; throw new Error('The trace engine did not come up in 10 minutes and was stopped. Its log is in the app’s console; on Apple Silicon a PyTorch call that hangs on MPS looks like this (PSI_DEVICE=cpu runs the inside engine on the CPU instead).'); }
       onStatus('loading the model into the trace engine (a minute or two the first time)…');
     }
   }
@@ -109,6 +110,9 @@ class TraceClient {
   async represent(text) { return this._post('/represent', { text }); }
   async vectors(args) { return this._post('/vectors', args || {}); }
   async sae(args) { return this._post('/sae', args || {}); }
+  async override(args) { return this._post('/override', args || {}); }
+  async context(args) { return this._post('/context', args || {}); }
+  async attractor(args) { return this._post('/attractor', args || {}); }
   async scoreText(args) { return this._post('/score_text', args || {}); }
   async ablate(args) { return this._post('/ablate', args); }
   async ckptList() { return this._post('/ckpt_list', {}); }

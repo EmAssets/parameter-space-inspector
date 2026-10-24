@@ -12,17 +12,25 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 function createTimeline({ config, log }) {
-  const DIR = path.join(config.DATA, 'timeline'), PLACED = path.join(DIR, 'placements'), GRAFTS = path.join(DIR, 'grafts'), SERIES = path.join(DIR, 'series');
+  const DIR = path.join(config.DATA, 'timeline'), PLACED = path.join(DIR, 'placements'), GRAFTS = path.join(DIR, 'grafts'), SERIES = path.join(DIR, 'series'), FITS = path.join(DIR, 'fits');
   const mk = (d) => fs.mkdirSync(d, { recursive: true });
   const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (_) { return null; } };
   const safe = (s) => String(s).replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 120) || 'model';
 
   // ── the models a run may use: the Hugging Face folders of the model listing, with their shape ──
   const stepOf = (p) => { const m = /(?:^|\/)step(\d+)(?:\/|$)/.exec(`${p.replace(/\\/g, '/')}/`); return m ? Number(m[1]) : null; };
+  // The vocabulary, not the file: a tokenizer re-saved by another library version has other bytes but the same pieces.
   const tokHash = (dir) => {
-    for (const f of ['tokenizer.json', 'vocab.json', 'tokenizer.model']) {
-      try { return crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, f))).digest('hex').slice(0, 16); } catch (_) { /* next */ }
-    }
+    const h = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
+    const sorted = (o) => (Array.isArray(o) ? o : Object.keys(o).sort().map((k) => [k, o[k]]));
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, 'tokenizer.json'), 'utf8'));
+      const added = (j.added_tokens || []).map((a) => [a.id, a.content]).sort((a, b) => a[0] - b[0]);
+      const merges = (j.model && j.model.merges || []).map((x) => (Array.isArray(x) ? x.join(' ') : x));   // pairs or "a b" strings, by version
+      if (j.model && j.model.vocab) return h(JSON.stringify([sorted(j.model.vocab), merges, added]));
+    } catch (_) { /* no tokenizer.json, or another shape */ }
+    try { return h(JSON.stringify(sorted(JSON.parse(fs.readFileSync(path.join(dir, 'vocab.json'), 'utf8'))))); } catch (_) { /* next */ }
+    try { return h(fs.readFileSync(path.join(dir, 'tokenizer.model'))); } catch (_) { /* none */ }
     return null;
   };
   function shape(m) {
@@ -31,7 +39,7 @@ function createTimeline({ config, log }) {
     const rp = t.rope_parameters || {};
     return { name: m.name, path: m.path, arch: m.arch, model_type: t.model_type || c.model_type || null, params: m.params_estimate || null, gb: m.gb,
       layers: t.num_hidden_layers || null, hidden, heads, kv: t.num_key_value_heads || heads, head_dim: t.head_dim || (hidden && heads ? hidden / heads : null),
-      ffn: t.intermediate_size || null, vocab: t.vocab_size || null, rope: JSON.stringify([rp.rope_theta ?? t.rope_theta ?? null, rp.rope_type ?? null, t.rotary_pct ?? rp.partial_rotary_factor ?? null]),
+      ffn: t.intermediate_size || null, vocab: t.vocab_size || null, rope: JSON.stringify([rp.rope_theta ?? t.rope_theta ?? null, rp.rope_type ?? t.rope_scaling?.rope_type ?? 'default', t.rotary_pct ?? rp.partial_rotary_factor ?? null]),
       tokenizer: tokHash(m.path), step: stepOf(m.path), family: stepOf(m.path) != null ? path.basename(path.dirname(m.path)) : null };
   }
   let MODELS = null;
@@ -184,6 +192,39 @@ function createTimeline({ config, log }) {
     let fl = []; try { fl = fs.readdirSync(SERIES).filter((f) => f.endsWith('.json')); } catch (_) { /* none */ }
     return { series: fl.map((f) => { const d = readJson(path.join(SERIES, f)); return d && { id: path.basename(f, '.json'), name: d.record.name, root: d.record.merkle_root, leaves: d.record.leaves, created: d.record.created, signed: !!d.signature, members: d.members }; }).filter(Boolean) };
   }
+  // ── what fits here: training this model on this GPU (src/train_fit.py), estimated, then measured on request ──
+  const METHODS = ['full', 'full8', 'lora', 'qlora'];
+  const fitFile = (m, method) => path.join(FITS, `${safe(m.name)}__${method}.json`);
+  async function gpuNow() {
+    try { const g = await require('./gpu.js').gpuState({ maxAgeMs: 0 }); const x = (g.gpus || [])[0]; if (x && x.freeMB != null) return { name: x.name, free_gb: +(x.freeMB / 1024).toFixed(2), total_gb: +(x.totalMB / 1024).toFixed(2) }; } catch (_) { /* no GPU reader */ }
+    return null;
+  }
+  async function fit(a) {
+    const m = byPath(a.model); if (!m) throw new Error('not a model folder from the listing (Settings > Local model > Scan)');
+    const g = await gpuNow();
+    const args = [path.join(SRC, 'train_fit.py'), 'estimate', m.path, '--seq', String(a.seq || 1024)];
+    if (g) args.push('--free-gb', String(g.free_gb), '--gpu', g.name);
+    const r = require('child_process').spawnSync(PY(), args, { cwd: SRC, windowsHide: true, encoding: 'utf8', env: config.cacheEnv({ PYTHONIOENCODING: 'utf-8' }) });
+    const line = String(r.stdout || '').split(/\r?\n/).filter((l) => l.startsWith('{')).pop();
+    if (!line) throw new Error(`the estimate failed: ${String(r.stderr || '').trim().split(/\r?\n/).pop() || 'no output'}`);
+    const est = JSON.parse(line);
+    for (const k of METHODS) {   // idle: the whole card less about 1 GB the desktop keeps
+      est.methods[k].measured = readJson(fitFile(m, k));
+      est.methods[k].fits_idle = g ? est.methods[k].gb + 0.6 <= g.total_gb - 1.0 : null;
+    }
+    const partners = compat({ host: m.path }).donors.filter((d) => d.compat.kind !== 'incompatible').map((d) => ({ name: d.name, path: d.path, kind: d.compat.kind, why: d.compat.why }));
+    return { ...est, gpu_now: g, partners };
+  }
+  async function fitMeasure(a) {
+    if (a.confirm !== true) throw new Error('A measured run starts only from the Timeline view’s own button.');
+    const m = byPath(a.model); if (!m) throw new Error('not a model folder from the listing');
+    const method = METHODS.includes(a.method) ? a.method : 'lora';
+    const g = await gpuNow(); if (!g) throw new Error('no GPU reading: a measured run needs a GPU');
+    mk(FITS); const out = fitFile(m, method);
+    const args = [path.join(SRC, 'train_fit.py'), 'measure', m.path, '--method', method, '--seq', String(a.seq || 1024), '--cap-gb', String(Math.max(0.5, g.free_gb - 0.5)), '--out', out];
+    return run('fit', args, out, { label: `measuring ${method} training of ${m.name}`, model: m.name, method });
+  }
+
   function remove(a) {
     const f = fileOf(a.kind || 'placement', a.id); fs.unlinkSync(f); return { removed: a.id };
   }
@@ -203,6 +244,8 @@ function createTimeline({ config, log }) {
       case 'sign_series': return signSeries(a);
       case 'series': return seriesList();
       case 'delete': return remove(a);
+      case 'fit': return fit(a);
+      case 'fit_measure': return fitMeasure(a);
       default: throw new Error(`timeline: unknown action ${a.action}`);
     }
   }

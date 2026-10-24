@@ -58,8 +58,14 @@
     $('cmFetch').hidden = !!L.ready;
     for (const id of ['cmBuild', 'cmTrain', 'cmMake']) PSI.block($(id), 'line', L.ready ? null : 'Download the seed first (top of this view).');
     fillMe(); await Promise.all([listRecipes(), listBranches(), listModels(), listPlugins()]);
-    if (OV.job && OV.job.running) poll(() => refresh());
+    // The server keeps the last job and what it found: a running one is followed to its end, and after a reload the
+    // finished one's result is shown again (once per page). Publishing and signing are never re-shown with their buttons.
+    const j = OV.job && OV.job.job, again = j && SHOW_JOB[j.kind];
+    if (OV.job && OV.job.running) poll(async (d) => { await refresh(); if (d && again) again(d); });
+    else if (!RESTORED && j && j.finished && !j.error && j.done && again) { again(j.done); PSI.status($('cmStat'), `${j.label}: shown from ${new Date(j.ended || j.started).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`); }
+    RESTORED = true;
   }
+  let RESTORED = false;
   $('cmFetch').addEventListener('click', () => start({ action: 'line_fetch', confirm: true }, () => refresh()));
 
   // ── recipes ──
@@ -147,23 +153,27 @@
   const build = (mode) => start({ action: 'build', id: SEL, mode, gguf: $('cmGguf').checked, confirm: true }, (d) => { if (d) { renderBuilt(d); listModels(); } });
   $('cmBuild').addEventListener('click', () => build('strict')); $('cmRecover').addEventListener('click', () => build('recover'));
   $('cmPartial').addEventListener('click', () => build('partial')); $('cmDownload').addEventListener('click', () => build('download'));
-  $('cmBisect').addEventListener('click', () => start({ action: 'bisect', id: SEL, confirm: true }, (d) => { if (d) { const b = $('cmBuilt'); b.textContent = ''; b.appendChild(el('p', '', `Suspect: ${d.suspect} by ${d.contributor || '?'} (${d.builds} builds). With it ${d.full}, without it ${d.without}.`)); b.appendChild(el('p', 'small muted', d.note)); } }));
+  function showBisect(d) { const b = $('cmBuilt'); b.textContent = ''; b.appendChild(el('p', '', `Suspect: ${d.suspect} by ${d.contributor || '?'} (${d.builds} builds). With it ${d.full}, without it ${d.without}.`)); b.appendChild(el('p', 'small muted', d.note)); }
+  $('cmBisect').addEventListener('click', () => start({ action: 'bisect', id: SEL, confirm: true }, (d) => { if (d) showBisect(d); }));
   $('cmUse').addEventListener('click', async () => { try { const r = await api({ action: 'use', id: SEL, confirm: true }); PSI.status($('cmStat'), `use recorded and signed (${r.use})`, 'ok'); } catch (e) { PSI.status($('cmStat'), e.message, 'error'); } });
   $('cmCosign').addEventListener('click', () => start({ action: 'cosign_em', kind: 'recipe', id: SEL, confirm: true }, () => check(SEL)));
   // ── the second path: public Hugging Face models ──
   $('cmHfFind').addEventListener('click', () => {
     const box = $('cmHfFound'); box.textContent = ''; $('cmHfRow').hidden = true; $('cmHfFx').hidden = true;
-    start({ action: 'hf_find', base: $('cmHfBase').value.trim() }, (d) => {
-      if (!d) return;
+    start({ action: 'hf_find', base: $('cmHfBase').value.trim() }, (d) => { if (d) showHfFound(d); });
+  });
+  function showHfFound(d) {
+    const box = $('cmHfFound'); box.textContent = '';
+    {
       box.appendChild(el('p', 'small muted', `${d.base} @ ${String(d.commit).slice(0, 10)} (${d.licence || 'no licence stated'}). Tick the models to merge into it:`));
       for (const c of d.candidates) {
         const l = el('label', `small cm-pickrow ${c.ok ? '' : 'cm-no'}`); const x = el('input'); x.type = 'checkbox'; x.value = c.repo; x.disabled = !c.ok;
         l.append(x, ` ${c.repo}`, el('span', 'muted', `  ${c.licence || 'no licence'} · ${c.downloads || 0} downloads · ${c.why}`)); box.appendChild(l);
       }
       const carry = () => { const sel = $('cmHfCarry'); const cur = sel.value; sel.textContent = ''; [...box.querySelectorAll('input:checked')].forEach((x, i) => { const o = el('option', '', x.value); o.value = String(i); sel.appendChild(o); }); sel.value = cur || '0'; };
-      box.addEventListener('change', carry); $('cmHfRow').hidden = false; $('cmHfFx').hidden = false;
-    });
-  });
+      box.onchange = carry; $('cmHfRow').hidden = false; $('cmHfFx').hidden = false;
+    }
+  }
   $('cmHfMake').addEventListener('click', () => {
     const bs = [...$('cmHfFound').querySelectorAll('input:checked')].map((x) => x.value); if (!bs.length) { PSI.status($('cmStat'), 'tick at least one model', 'warn'); return; }
     start({ action: 'hf_make', confirm: true, base: $('cmHfBase').value.trim(), branches: bs, method: $('cmHfMethod').value, lam: +$('cmHfLam').value, carry: +$('cmHfCarry').value || 0,
@@ -204,20 +214,23 @@
   $('cmTrain').addEventListener('click', () => {
     const practice = $('cmPractice').checked;
     start({ action: 'train', confirm: true, practice, text: practice ? '' : $('cmText').value, name: $('cmBName').value || (practice ? 'peter pan' : 'my branch'), subject: $('cmSubject').value,
-      licence: practice ? 'public domain' : $('cmLicence').value, steps: +$('cmSteps').value || 200 }, (d) => {
-      if (!d) return; const b = $('cmTrained'); b.textContent = '';
-      b.appendChild(el('p', 'ok', `Branch ${d.name} (${d.branch}) trained in ${d.seconds} s${d.signed ? ', signed' : ', not signed (private)'}.`));
-      b.appendChild(el('p', 'small', `On held-out pages of your own text: ${d.own_before} → ${d.own_after}. On the line’s evaluation suite: ${d.before} → ${d.after} (lower is better).`));
-      listBranches();
-    });
+      licence: practice ? 'public domain' : $('cmLicence').value, steps: +$('cmSteps').value || 200 }, (d) => { if (!d) return; showTrained(d); listBranches(); });
   });
+  function showTrained(d) {
+    const b = $('cmTrained'); b.textContent = '';
+    b.appendChild(el('p', 'ok', `Branch ${d.name} (${d.branch}) trained in ${d.seconds} s${d.signed ? ', signed' : ', not signed (private)'}.`));
+    b.appendChild(el('p', 'small', `On held-out pages of your own text: ${d.own_before} → ${d.own_after}. On the line’s evaluation suite: ${d.before} → ${d.after} (lower is better).`));
+  }
   $('cmPractice').addEventListener('change', () => { $('cmText').disabled = $('cmPractice').checked; });
   function picked() { return [...$('cmPick').querySelectorAll('input:checked')].map((c) => c.value); }
   $('cmMake').addEventListener('click', () => { const bs = picked(); if (!bs.length) { PSI.status($('cmStat'), 'tick at least one branch', 'warn'); return; }
     start({ action: 'recipe_make', confirm: true, branches: bs, plugin: $('cmPlugin').value, name: $('cmRName').value || 'my recipe' }, async (d) => { if (d) { await listRecipes(); check(d.recipe); } }); });
   $('cmSearchBest').addEventListener('click', () => { const bs = picked(); if (bs.length < 2) { PSI.status($('cmStat'), 'tick two or more branches to search among', 'warn'); return; }
-    start({ action: 'search', confirm: true, branches: bs, plugin: $('cmPlugin').value }, (d) => { if (!d) return; for (const c of $('cmPick').querySelectorAll('input')) c.checked = d.chosen.includes(c.value);
-      const b = $('cmBuilt'); b.textContent = ''; b.appendChild(el('p', '', `Best subset: ${d.chosen.length} of ${bs.length} (score ${d.score}; all of them ${d.everything}). Ticked above.`)); b.appendChild(el('p', 'small muted', d.note)); }); });
+    start({ action: 'search', confirm: true, branches: bs, plugin: $('cmPlugin').value }, (d) => { if (d) showSearch(d, bs.length); }); });
+  function showSearch(d, of) {
+    for (const c of $('cmPick').querySelectorAll('input')) c.checked = d.chosen.includes(c.value);
+    const b = $('cmBuilt'); b.textContent = ''; b.appendChild(el('p', '', `Best subset: ${d.chosen.length}${of ? ` of ${of}` : ''} (score ${d.score}; all of them ${d.everything}). Ticked above.`)); b.appendChild(el('p', 'small muted', d.note));
+  }
   async function listPlugins() {
     try { const r = await api({ action: 'plugins' }); PLUGINS = r.plugins || []; } catch (_) { return; }
     const s = $('cmPlugin'), cur = s.value; s.textContent = ''; for (const p of PLUGINS) { const o = el('option', '', `${p.name}${p.linear ? '' : ' (not linear)'}`); o.value = p.name; s.appendChild(o); }
@@ -250,15 +263,20 @@
   }
   function verifyNow(kind, id) {
     const box = $('cmReport'); box.textContent = '';
-    start({ action: 'verify', kind, id, replay: +$('cmVReplay').value || 0, online: $('cmVOnline').checked }, (d) => {
-      if (!d) return; box.appendChild(el('p', 'cm-title', `${d.name || ''}  (${d.kind} ${d.id})`));
-      for (const r of d.rows) {
-        const p = el('div', 'cm-claim'); p.appendChild(el('span', r.result === 'yes' ? 'ok' : r.result === 'no' ? 'bad' : 'muted', r.result === 'yes' ? '✓' : r.result === 'no' ? '✗' : '·'));
-        p.appendChild(el('span', `cm-strength ${r.strength}`, r.strength)); p.appendChild(el('span', '', r.claim)); box.appendChild(p);
-        if (r.detail) box.appendChild(el('div', 'small muted cm-detailrow', r.detail));
-      }
-    });
+    start({ action: 'verify', kind, id, replay: +$('cmVReplay').value || 0, online: $('cmVOnline').checked }, (d) => { if (d) showReport(d); });
   }
+  function showReport(d) {
+    const box = $('cmReport'); box.textContent = '';
+    box.appendChild(el('p', 'cm-title', `${d.name || ''}  (${d.kind} ${d.id})`));
+    for (const r of d.rows) {
+      const p = el('div', 'cm-claim'); p.appendChild(el('span', r.result === 'yes' ? 'ok' : r.result === 'no' ? 'bad' : 'muted', r.result === 'yes' ? '✓' : r.result === 'no' ? '✗' : '·'));
+      p.appendChild(el('span', `cm-strength ${r.strength}`, r.strength)); p.appendChild(el('span', '', r.claim)); box.appendChild(p);
+      if (r.detail) box.appendChild(el('div', 'small muted cm-detailrow', r.detail));
+    }
+  }
+  // A finished job's result, by the job's kind, shown again after a reload (refresh above). Only reports: a publish
+  // dry run (with its Publish button), signing and making are not re-shown.
+  const SHOW_JOB = { check: (d) => { SEL = d.recipe || SEL; CHECK = d; renderCheck(d); }, build: renderBuilt, bisect: showBisect, search: (d) => showSearch(d), 'hf-find': showHfFound, verify: showReport, train: showTrained };
   $('cmVerify').addEventListener('click', () => { const [k, id] = String($('cmVItem').value || '').split(':'); if (k) verifyNow(k, id); });
 
   // ── profile, signing, keys, token ──
@@ -311,6 +329,14 @@
   $('cmTokenSave').addEventListener('click', async () => { try { await api({ action: 'hf_token_set', token: $('cmToken').value }); $('cmToken').value = ''; say('token saved', 'ok'); refresh(); } catch (e) { say(e.message, 'error'); } });
   $('cmTokenClear').addEventListener('click', async () => { try { await api({ action: 'hf_token_clear' }); say('token removed', 'ok'); refresh(); } catch (e) { say(e.message, 'error'); } });
   $('cmIdPrepare').addEventListener('click', () => prepare('identity', null, $('cmIdRepo').value.trim(), $('cmKOut')));
+
+  // ── kept forms (PSI.keep): what was typed survives a reload. The pasted text is kept on its own (it can be large);
+  // tokens, recovery codes and the profile never are (the profile is read back from the server).
+  if (PSI.keep) {
+    PSI.keep('commons', { inputs: ['cmBName', 'cmSubject', 'cmLicence', 'cmSteps', 'cmPractice', 'cmSearch', 'cmSort', 'cmAddr', 'cmHfBase', 'cmHfName', 'cmHfMethod', 'cmHfLam', 'cmRName', 'cmRepo', 'cmVReplay', 'cmVOnline', 'cmGguf'] })
+      .ready.then(() => { $('cmText').disabled = $('cmPractice').checked; });
+    PSI.keep('commons-text', { inputs: ['cmText'] });
+  }
 
   // ── showing the view ──
   let first = true;

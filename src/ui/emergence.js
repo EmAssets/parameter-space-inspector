@@ -75,10 +75,26 @@
         cur = s; PSI.status($('emStat'), `loading step ${s.toLocaleString()} and asking…`, 'busy');
         R.ask[s] = await psi.ckptAsk({ step: s, prompt, text: text || undefined, n_new: 40 });
       }
-      renderAsk(steps); PSI.status($('emStat'), `done · ${steps.map((s) => `${R.ask[s].seconds}s`).join(', ')}`, 'ok');
+      renderAsk(steps); KEEP_ASK.save({ steps, ask: Object.fromEntries(steps.map((s) => [s, R.ask[s]])) });
+      PSI.status($('emStat'), `done · ${steps.map((s) => `${R.ask[s].seconds}s`).join(', ')}`, 'ok');
     });
     btns.forEach((b) => { b.disabled = false; });
   }
+  // Kept views (PSI.keep): these panels build their results here from one call per checkpoint, so the finished result is
+  // stored with save() and redrawn by render() after a reload (info.restored: from before). The head scan and
+  // knock-outs below are already kept in this browser (EX.keep); only their inputs are kept here.
+  const KEEP_ASK = PSI.keep('emergence-ask', { inputs: ['emPrompt', 'emText'], status: 'emStat', render: (a) => {
+    if (!a || !Array.isArray(a.steps) || !a.ask) return;
+    a.steps.forEach((s) => { if (a.ask[s]) R.ask[s] = a.ask[s]; });
+    const steps = a.steps.filter((s) => R.ask[s]); if (steps.length) renderAsk(steps);
+  } });
+  const KEEP_TEST = PSI.keep('emergence-test', { inputs: ['emTestPrompt', 'emTestGood', 'emTestBad', 'emTestAll'], status: 'emTestStat', render: (t) => {
+    if (!t || !Array.isArray(t.curve) || !t.curve.length) return;
+    R.test = t; if (!t.partial) window.PSI_LAST_TEST = t;
+    if (!$('emTestCanvas').clientWidth) return;   // drawn when the tab opens (drawAll)
+    renderTest();
+  } });
+  PSI.keep('emergence-heads', { inputs: ['emK', 'emHeadsShow'], render: () => {} });
   $('emAsk').addEventListener('click', () => ask([curStep()]));
   $('emCmp').addEventListener('click', () => ask([512, 1000].filter((s) => R.steps.includes(s))));
   function renderAsk(steps) {
@@ -154,7 +170,7 @@
       if (!curve.length) { p.finish('stopped before any checkpoint was scored', { markDone: false }); PSI.status($('emTestStat'), 'Stopped: nothing scored.', 'warn'); return; }
       const all = base ? [...base.curve.filter((c) => !curve.some((x) => x.step === c.step)), ...curve] : curve;
       R.test = { prompt, good, bad, ...verdict(all), seconds: Math.round(((base ? base.seconds : 0) + secs) * 10) / 10, partial: p.cancelled ? `${curve.length} of ${steps.length}` : '', cond: lastCond, time: Date.now() };
-      renderTest();
+      renderTest(); KEEP_TEST.save(R.test);
       if (p.cancelled) { p.finish(`stopped after ${curve.length} of ${steps.length} checkpoints`, { markDone: false }); PSI.status($('emTestStat'), `${R.test.seconds}s · stopped early, so the verdict covers only the checkpoints scored`, 'warn'); }
       else { window.PSI_LAST_TEST = R.test; p.finish(`${steps.length} checkpoints scored`); PSI.status($('emTestStat'), `${R.test.seconds}s · ${R.test.curve.length} of ${R.steps.length} checkpoints on disk scored`, 'ok'); }
     } catch (e) {

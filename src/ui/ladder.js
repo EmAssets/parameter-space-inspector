@@ -513,7 +513,7 @@
       const base = r.dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').slice(0, 60); if (!$('ldTag').value) $('ldTag').value = base;
       if (r.size) { $('ldQ8').checked = !!r.size.q8; $('ldDirMeta').textContent = `${r.size.arch}, ${r.size.layers} layers, about ${(r.size.params / 1e9).toFixed(1)}B parameters${r.size.q8 ? ' · 8-bit' : ''}`; }
       else $('ldDirMeta').textContent = 'no config.json found: the ladder needs a Hugging Face model folder';
-      $('ldSeed').value = D && D.rows[$('ldTag').value] ? String(nextSeed($('ldTag').value)) : ''; updateCmd(); gateGo();
+      $('ldSeed').value = D && D.rows[$('ldTag').value] ? String(nextSeed($('ldTag').value)) : ''; updateCmd(); gateGo(); $('ldDir').dispatchEvent(new Event('change'));   // kept (PSI.keep)
     } catch (e) { err(e); }
   });
   $('ldStored').addEventListener('change', () => {
@@ -521,9 +521,11 @@
     $('ldDir').value = fullPath(R); $('ldDir').placeholder = fullPath(R) ? 'model folder' : `${R.path} (${R.hub ? 'Hugging Face: download it, then Choose folder' : 'in your models folder: set it in Settings > Models, or Choose folder'})`; $('ldTag').value = t; $('ldSeed').value = String(nextSeed(t));
     const big = (R.layers || 0) * (R.neurons || 0) > 30 * 12000; $('ldQ8').checked = big;
     $('ldDirMeta').textContent = `replication of the stored run (seed 0) with seed ${nextSeed(t)}; ${R.seconds ? `the stored run took ${Math.round(R.seconds / 60)} min` : ''}`;
-    updateCmd(); gateGo();
+    updateCmd(); gateGo(); $('ldDir').dispatchEvent(new Event('change'));   // kept (PSI.keep)
   });
   ['ldTag', 'ldSeed', 'ldQ8'].forEach((id) => $(id).addEventListener('input', updateCmd));
+  // The run form survives a reload (PSI.keep); a run itself lives on the server and is picked up by its status.
+  if (window.PSI && PSI.keep) PSI.keep('ladder', { inputs: ['ldDir', 'ldTag', 'ldSeed', 'ldQ8', 'ldCtl', 'ldFreeTrace', 'ldFreeEngine'] }).ready.then(() => { if ($('ldDir').value) { updateCmd(); gateGo(); } });
   let started = 0, timer = null, prog = null, seen = 0;
   const cancelRun = async () => { try { await window.psi.ladder({ action: 'cancel' }); } catch (e) { err(e); } };
   const progHost = () => { let h = $('ldProg'); if (!h) { h = el('div'); h.id = 'ldProg'; $('ldGo').parentElement.after(h); } return h; };

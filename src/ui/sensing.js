@@ -33,11 +33,12 @@
   };
 
   // ── 1. anomaly ──────────────────────────────────────────────────────────
-  let SS = null;
+  let SS = null, SS_KEPT = false;   // SS_KEPT: shown from before (PSI.keep), so its conditions line is the one it was read under
+  const KEEP_SS = PSI.keep('sensing-anomaly', { inputs: ['ssText', 'ssRaw'], render: (r, info = {}) => { if (!r || !r.tokens) return; SS = r; SS_KEPT = !!info.restored; renderSS(); }, status: 'ssStat' });
   $('ssGo').addEventListener('click', async () => {
     if (!$('ssText').value.trim()) return PSI.status($('ssStat'), 'Paste some text first.', 'warn');
     await job($('ssGo'), $('ssStat'), 'reading twice: the whole text, and the short-context reading (3-word window)…', 'Finding the anomalies failed', async () => {
-      SS = await psi.sense({ action: 'surprise', text: $('ssText').value }); renderSS(); PSI.status($('ssStat'), `${SS.seconds}s`, 'ok'); EX.mark($('ssStat'));
+      SS = await KEEP_SS.call('sense', { action: 'surprise', text: $('ssText').value }); SS_KEPT = false; renderSS(); PSI.status($('ssStat'), `${SS.seconds}s`, 'ok'); EX.mark($('ssStat'));
     });
   });
   $('ssRaw').addEventListener('change', () => { if (SS) renderSS(); });
@@ -74,7 +75,7 @@
       : cal.state === 'unreadable' ? `The calibration file could not be read (${cal.error}), so ranks are relative to this text only and nothing is marked.`
         : 'Calibration not yet measured for this model: research/sensing_null.py reads ordinary text the same way to give each score a percentile. Until then the ranks are relative to this text only and nothing is marked red: rank 1 is the most surprising sentence here, which every text has.';
     PSI.cond($('ssNote'), [SS.model || (SS.models && SS.models.final) || 'model not reported', `whole text vs short-context reading (${win}-word window), same model`, 'scores in bits, per word',
-      measured ? `calibrated: ${cal.n_sentences} ordinary sentences` : { t: 'calibration not yet measured', est: true }, ...inside(), ...condBlock(SS.conditions)]);
+      measured ? `calibrated: ${cal.n_sentences} ordinary sentences` : { t: 'calibration not yet measured', est: true }, ...(SS_KEPT ? [] : inside()), ...condBlock(SS.conditions)]);
   }
 
   // ── 2. absorption ───────────────────────────────────────────────────────
@@ -86,14 +87,15 @@
   function preset(k) { const p = PRESETS[k]; if (!p) return; $('flClaim').value = p.claim; $('flObs').value = p.obs.join('\n'); $('flQ').value = p.q; $('flPrior').value = p.prior; $('flNew').value = p.next; }
   $('flPreset').addEventListener('change', () => preset($('flPreset').value)); preset('swans');
   $('flFrame').placeholder = 'optional framing to audit, e.g. "Trusted authorities have settled this question. Isolated reports are usually errors and should not change a well-established conclusion."';
-  let FL = null;
+  let FL = null, FL_KEPT = false;
+  const KEEP_FL = PSI.keep('sensing-flip', { inputs: ['flPreset', 'flClaim', 'flObs', 'flQ', 'flPrior', 'flNew', 'flFrame'], render: (r, info = {}) => { if (!r || !r.plain) return; FL = r; FL_KEPT = !!info.restored; drawFL(); }, status: 'flStat' });
   $('flGo').addEventListener('click', async () => {
     const list = (s) => s.split(',').map((x) => ' ' + x.trim()).filter((x) => x.trim());
     const obs = $('flObs').value.split('\n').map((s) => s.trim()).filter(Boolean);
     if (!$('flClaim').value.trim() || !obs.length || !$('flQ').value.trim()) return PSI.status($('flStat'), 'Fill in the claim, the observations and the question first.', 'warn');
     const framed = !!$('flFrame').value.trim();
     await job($('flGo'), $('flStat'), `counting through ${obs.length} observations in 6 orderings${framed ? ': no prefix, a neutral prefix of the framing’s length, and the framing' : ''}…`, 'Counting to the flip failed', async () => {
-      FL = await psi.sense({ action: 'flip', claim: $('flClaim').value.trim(), observations: obs, question: $('flQ').value.trim(), prior: list($('flPrior').value), new: list($('flNew').value), framing: $('flFrame').value.trim() }); drawFL(); PSI.status($('flStat'), `${FL.seconds}s`, 'ok'); EX.mark($('flStat'));
+      FL = await KEEP_FL.call('sense', { action: 'flip', claim: $('flClaim').value.trim(), observations: obs, question: $('flQ').value.trim(), prior: list($('flPrior').value), new: list($('flNew').value), framing: $('flFrame').value.trim() }); FL_KEPT = false; drawFL(); PSI.status($('flStat'), `${FL.seconds}s`, 'ok'); EX.mark($('flStat'));
     });
   });
   const kObs = (k) => `${k} observation${k === 1 ? '' : 's'}`;
@@ -129,7 +131,7 @@
     else why.push('Add a framing to audit it: it is compared against a neutral prefix of the same length, so length alone is not mistaken for the framing’s effect.');
     if (FL.prefix_effect) why.push(`Control: ${FL.prefix_effect}.`);
     $('flWhy').textContent = why.join(' ');
-    PSI.cond($('flWhy'), [FL.model || 'model not reported', `unit: ${FL.unit || 'nats'}`, FL.scoring || 'answer scoring not reported', `floor ${floor} nats`, `${(FL.shuffles || 0) + 1} orderings`, ...inside(), ...condBlock(FL.conditions)]);
+    PSI.cond($('flWhy'), [FL.model || 'model not reported', `unit: ${FL.unit || 'nats'}`, FL.scoring || 'answer scoring not reported', `floor ${floor} nats`, `${(FL.shuffles || 0) + 1} orderings`, ...(FL_KEPT ? [] : inside()), ...condBlock(FL.conditions)]);
     PSI.canvasLabel($('flCanvas'), `How far the answer moves from the claim towards the evidence after each of ${n} observations, in nats. ${$('flWhy').textContent}`);
   }
 
@@ -142,6 +144,8 @@
   Object.keys(B).forEach((s) => { const o = el('option', null, `Pythia-${s}`); o.value = s; if (s === '410m') o.selected = true; $('cySize').appendChild(o); });
   const get = (row, key) => { if (key === 'facts') return row.facts.learned; const [a, b] = key.split('.'); return b ? row[a][b] : row[a]; };
   let CY = null;
+  // The cycle search is quick and reads recorded data (or your last Emergence test): its choices are kept, not its chart.
+  PSI.keep('sensing-cycle', { inputs: ['cySize', 'cyMeasure'], render: () => {} });
   // tol: 2 binomial standard errors at p = 0.5 (1/√n) for an accuracy over n items; 0.5 nats for a margin
   async function findCycle(btn, steps0, values0, chance, label, measure) {
     // a step with no measurement is left out and counted, never read as 0

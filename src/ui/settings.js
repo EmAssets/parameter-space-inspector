@@ -329,7 +329,7 @@
     const r = await psi.setupCheck(), o = $('stSetupOut'); o.classList.remove('hidden');
     o.textContent = [`local model: ${r.local || 'none'}${r.localShape ? ` (${r.localShape.layers} layers × ${r.localShape.width})` : ''}`,
       `inside engine: ${r.inside || 'none'}${r.insideShape ? ` (${r.insideShape.layers} layers × ${r.insideShape.width})` : ''} · ${r.inside_engine && r.inside_engine.ok ? 'running' : 'not running (starts on first use)'}`,
-      `follow the local model: ${r.auto ? 'on' : 'off'}`, r.ok ? 'no problems found' : `problems:${NL}- ${r.problems.join(`${NL}- `)}`, ...hwLines(r.hardware)].join(NL);
+      `follow the local model: ${r.auto ? 'on' : 'off'}`, r.ok ? 'no problems found' : `problems:${NL}- ${r.problems.join(`${NL}- `)}`, ...(r.optional || []).map((o) => `not set up: ${o}`), ...hwLines(r.hardware)].join(NL);
     return r;
   }
   $('stSetupCheck').addEventListener('click', () => checkSetup().catch(err));
@@ -346,6 +346,45 @@
   ['lensOn', 'thinkOn', 'loraOn', 'cvScale'].forEach((id) => $(id) && $(id).addEventListener('change', status));
   PSI.onState(() => { if (S) status(); });
   ['stTest', 'stTry'].forEach((id) => PSI.requires($(id), 'key'));
+
+  // ── updates (src/update-api.js): check at startup only if turned on; download and install only on a press ──
+  const upd = { stat: (t) => { $('stUpdStat').textContent = t; }, busy: (on) => ['stUpdCheck', 'stUpdGet', 'stUpdInstall'].forEach((id) => { $(id).disabled = on; }) };
+  function updShow(r) {
+    const list = $('stUpdList'); list.textContent = ''; list.classList.add('hidden');
+    $('stUpdGet').hidden = r.state !== 'available'; $('stUpdInstall').hidden = !(r.state === 'downloaded' && r.fastForward && !(r.edited || []).length);
+    if (r.state === 'current') upd.stat(`Up to date (version ${r.version}).`);
+    else if (r.state === 'available') upd.stat(`An update is available (you have version ${r.version}).`);
+    else if (r.state === 'downloaded') {
+      const notes = [];
+      if (!r.fastForward) notes.push('It cannot be installed on top of this copy (it has its own commits, or the published history was replaced): update by hand with git pull, or install a new copy.');
+      if ((r.edited || []).length) notes.push(`Files in the app folder have been edited (${r.edited.slice(0, 5).join(', ')}): undo or commit those edits first.`);
+      if (r.node) notes.push('The app’s Node packages changed: after it closes, npm install runs, then the app starts again (this can take a few minutes).');
+      if (r.python) notes.push('The Python packages changed: after installing, run pip install -r requirements.txt in the app folder (see Install and run in the manual).');
+      upd.stat(`Version ${r.next || '(new)'} downloaded, ${r.files} file${r.files === 1 ? '' : 's'} changed. ${notes.join(' ')}`);
+      (r.changes || []).forEach((c) => list.appendChild(el('li', null, c))); if ((r.changes || []).length) list.classList.remove('hidden');
+    } else if (r.state === 'installed') upd.stat(r.restart === 'app' ? `Installed (${r.from} to ${r.to}). Restarting…` : `Installed (${r.from} to ${r.to}). Restart the dev server${r.node ? ' after running npm install' : ''}${r.python ? ', and run pip install -r requirements.txt' : ''}.`);
+  }
+  async function updRun(action, quiet) {
+    upd.busy(true); if (!quiet) upd.stat(action === 'check' ? 'Checking…' : action === 'download' ? 'Downloading…' : 'Installing…');
+    try { const r = await psi.update({ action }); updShow(r); return r; } catch (e) { if (!quiet) { upd.stat(''); err(e); } return null; } finally { upd.busy(false); }
+  }
+  $('stUpdCheck').addEventListener('click', () => updRun('check'));
+  $('stUpdGet').addEventListener('click', () => updRun('download'));
+  $('stUpdInstall').addEventListener('click', () => updRun('install'));
+  // Raw data (src/records.js): every result kept for PSI Studio and re-analysis.
+  $('stRecKeep').addEventListener('change', async () => { try { S = await psi.settings({ records: { keep: $('stRecKeep').checked } }); } catch (e) { unsaved('“Keep every result”')(e); } });
+  $('stRecGB').addEventListener('change', async () => { const g = +$('stRecGB').value; try { S = await psi.settings({ records: { maxGB: g } }); } catch (e) { unsaved('the raw-data size limit')(e); } });
+  psi.settings().then((v) => { const r = v.records || {}; $('stRecKeep').checked = r.keep !== false; $('stRecGB').value = r.maxGB || 2; }).catch(() => {});
+  $('stUpdAuto').addEventListener('change', async () => { try { S = await psi.settings({ updates: { check: $('stUpdAuto').checked } }); } catch (e) { unsaved('“Check for updates when the app starts”')(e); } });
+  psi.settings().then((v) => {
+    $('stUpdAuto').checked = !!(v.updates && v.updates.check === true);
+    if (!$('stUpdAuto').checked) return;
+    // A few seconds after startup, so it never competes with loading the model; a failed check (offline) stays quiet.
+    setTimeout(async () => {
+      const r = await updRun('check', true);
+      if (r && r.state === 'available') PSI.warn('An update for the Parameter Space Inspector is available.', { action: { label: 'See it in Settings', view: 'settings', focus: 'stUpdGet' } });
+    }, 8000);
+  }).catch(() => { /* the main start-up above reports it */ });
 
   // The version, under Help and about (version.js loads after this file; an inline script is blocked by the page's CSP).
   addEventListener('load', () => { const v = window.PSI_VERSION, n = $('stVersion'); if (v && n) n.textContent = `Version ${v.version} (${v.date}). Made by Sail with Claude.`; });

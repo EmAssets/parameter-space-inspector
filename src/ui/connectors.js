@@ -93,16 +93,22 @@
     const L = SP && SP.language ? ` Language sentences average ${f2(ref.language)} (95% interval ${f2(SP.language.ci[0])} to ${f2(SP.language.ci[1])}, n ${SP.language.n}).` : ` Language sentences average ${f2(ref.language)}.`;
     return `Position ${f2(pos)} on the connection axis. ${layer} ${close}${L}${words}`;
   }
+  // A measurement on screen: from a run just now, or kept from before (PSI.keep); a kept one shows the conditions it was read under.
+  function render(resp, info = {}) {
+    if (!resp || !resp.items || !resp.items.length) return;
+    LASTresp = resp; LAST = resp.items;
+    $('cnWhy').textContent = LAST.length === 1 ? explainOne(LAST[0]) : LAST.map((x, i) => `${i + 1}. ${f2(x.position)} — ${x.text}`).join('   ');
+    tokens($('cnTokens'), LAST.length === 1 ? LAST[0].tokens : null, `Each piece’s pull along the connection axis at layer ${LAST[0].layer}: amber towards connection, blue towards a thing on its own; the pulls add up to the position.`);
+    drawMeter();
+    const it = LAST[0];
+    PSI.cond($('cnWhy'), [it.model || 'model not reported', `layer ${it.layer}`, it.unit || 'connection-axis units (0 = thing on its own, 1 = average connection)', `reference: recorded study (n ${D && D.meta && D.meta.n ? D.meta.n.sentences : 'not recorded'} sentences)`, `words alone: ${(it.baseline && it.baseline.state) || 'not returned'}`, ...(info.restored ? [] : inside()), ...condBlock(resp.conditions)]);
+  }
+  const KEEP = PSI.keep('connectors', { inputs: ['cnText'], render, status: 'cnStat' });
   async function measure(texts) {
     texts = texts.filter(Boolean); if (!texts.length) { PSI.status($('cnStat'), 'Write a sentence first.', 'warn'); $('cnText').focus(); return; }
     LIVE.forEach((b) => { b.disabled = true; }); PSI.status($('cnStat'), 'reading…', 'busy'); PSI.setRunning('connectors', true);
     try {
-      LASTresp = await psi.connector({ texts }); LAST = LASTresp.items;
-      $('cnWhy').textContent = LAST.length === 1 ? explainOne(LAST[0]) : LAST.map((x, i) => `${i + 1}. ${f2(x.position)} — ${x.text}`).join('   ');
-      tokens($('cnTokens'), LAST.length === 1 ? LAST[0].tokens : null, `Each piece’s pull along the connection axis at layer ${LAST[0].layer}: amber towards connection, blue towards a thing on its own; the pulls add up to the position.`);
-      drawMeter();
-      const it = LAST[0];
-      PSI.cond($('cnWhy'), [it.model || 'model not reported', `layer ${it.layer}`, it.unit || 'connection-axis units (0 = thing on its own, 1 = average connection)', `reference: recorded study (n ${D && D.meta && D.meta.n ? D.meta.n.sentences : 'not recorded'} sentences)`, `words alone: ${(it.baseline && it.baseline.state) || 'not returned'}`, ...inside(), ...condBlock(LASTresp.conditions)]);
+      render(await KEEP.call('connector', { texts }));
       PSI.status($('cnStat'), ''); if (window.PSIExp) PSIExp.mark($('cnStat')); PSI.setDone('connectors');
     } catch (e) { err(e); PSI.status($('cnStat'), `failed: ${PSI.explain(e).text}`, 'error'); } finally { LIVE.forEach((b) => { b.disabled = false; }); PSI.setRunning('connectors', false); }
   }

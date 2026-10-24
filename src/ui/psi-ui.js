@@ -58,7 +58,7 @@
   // help.html sections for each view (help.html#<view> wins when the manual has that anchor)
   const HELP = { generate: 'watch', neural: 'watch', paths: 'watch', read: 'surface', tokens: 'surface', compare: 'surface',
     understand: 'exp', emergence: 'exp', lesion: 'exp', sensing: 'exp', fight: 'exp', connectors: 'exp', ladder: 'exp',
-    anatomy: 'model', features: 'model', timeline: 'exp', file: 'model', lineage: 'seed', commons: 'commons', settings: 'settings' };
+    anatomy: 'model', override: 'override', context: 'context', attractor: 'attractor', features: 'model', timeline: 'exp', file: 'model', lineage: 'seed', commons: 'commons', settings: 'settings' };
   let helpIds = null;
   fetch('help.html').then((r) => (r.ok ? r.text() : '')).then((t) => { helpIds = new Set([...t.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])); updateHelp(); }).catch(() => { /* benign: help links fall back to the section map */ });
   PSI.helpUrl = (view) => { const v = view || PSI.currentView(); return `help.html#${helpIds && helpIds.has(v) ? v : HELP[v] || 'views'}`; };
@@ -76,11 +76,12 @@
   // Ask the app what is set up. Reads files only: never starts an engine.
   PSI.refreshState = async () => {
     const patch = { known: true };
-    try { const s = await psi.settings(); patch.key = !!(s.external && s.external.keySet); patch.checkpointsDir = (s.trace && s.trace.checkpoints) || ''; } catch (_) { /* keep */ }
+    // "key": a model to test with is set up: an OpenRouter key, or Prometheus / the judge on a free model (local/…, chatgpt/…).
+    try { const s = await psi.settings(), free = (m) => /^(local|chatgpt)\//.test(m || ''); patch.key = !!(s.external && s.external.keySet) || free(s.helper && s.helper.model) || free(s.external && s.external.judge); patch.checkpointsDir = (s.trace && s.trace.checkpoints) || ''; } catch (_) { /* keep */ }
     try {
       const r = await psi.setupCheck();
-      const inside = (r.problems || []).filter((p) => /inside engine/i.test(p));
-      patch.engine = !!r.inside && !inside.length;
+      const inside = [...(r.problems || []), ...(r.optional || [])].filter((p) => /inside engine/i.test(p));
+      patch.engine = !!r.inside && !inside.length; patch.engineKnown = true;   // until the check (about 10 s) answers, nothing claims the engine is missing
       patch.insideModel = r.inside ? String(r.inside).split(/[\\/]/).filter(Boolean).pop() : '';   // the folder the inside engine reads
       patch.engineProblem = inside[0] || '';
       patch.checkpoints = patch.engine && !!patch.checkpointsDir;
@@ -101,7 +102,7 @@
   }
   const NEEDS = {
     model: () => (state.model ? null : state.loading ? { text: 'Loading the model…' } : { text: 'Needs a loaded model:', link: () => PSI.loadModelLink() }),
-    engine: () => (state.engine ? null : { text: 'Needs the inside-the-model engine:', link: () => PSI.link('Set its weights folder in Settings', 'settings', 'stTraceDir') }),
+    engine: () => (state.engine || !state.engineKnown ? null : { text: 'Needs the inside-the-model engine:', link: () => PSI.link('Set its weights folder in Settings', 'settings', 'stTraceDir') }),
     checkpoints: () => (state.checkpoints ? null : { text: 'Needs training checkpoints:', link: () => PSI.link('Set the checkpoints folder in Settings', 'settings', 'stCkpt') }),
     key: () => (state.key ? null : { text: 'Needs an OpenRouter key:', link: () => PSI.link('Add a key in Settings', 'settings', 'stKey') }),
   };
@@ -333,6 +334,66 @@
   PSI.run = async (view, fn) => {
     PSI.setRunning(view, true);
     try { const r = await fn(); PSI.setDone(view); return r; } catch (e) { PSI.err(e); return undefined; } finally { PSI.setRunning(view, false); }
+  };
+
+  // ── kept views (src/session-api.js): what a view last showed survives a reload, a phone dropping the tab, back/forward,
+  // and carries to another device. PSI.keep(view, { inputs: [ids], render(result, info), status: id }) returns
+  // { call(name, ...args), save(result) }: a view's long call goes through call(), and the server writes its result into the view's
+  // state when it finishes, even if this page is gone by then. On load the view gets its inputs back (unless the user
+  // already typed), then its last result through render(result, { restored: true, at }); a call still running is
+  // waited for and rendered when it ends.
+  PSI.keep = (view, o = {}) => {
+    const ids = o.inputs || [], has = !!(window.psi && psi.session);
+    let touched = false, timer = null, waitingFor = null;
+    const stat = (t, k) => { const n = o.status && $(o.status); if (n) PSI.status(n, t, k); };
+    const when = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } };
+    const value = (n) => (n.type === 'checkbox' ? n.checked : n.value);
+    const inputs = () => Object.fromEntries(ids.map((id) => [id, $(id) ? value($(id)) : null]));
+    const fill = (vals) => {
+      if (touched || !vals) return;
+      // Untrusted events, so what redraws on a change redraws now (and `touched` stays false: the user typed nothing).
+      ids.forEach((id) => { const n = $(id); if (!n || vals[id] == null) return; if (n.type === 'checkbox') n.checked = !!vals[id]; else n.value = vals[id]; n.dispatchEvent(new Event('input')); n.dispatchEvent(new Event('change')); });
+    };
+    const saveInputs = () => { clearTimeout(timer); timer = setTimeout(() => { psi.session({ action: 'put', view, inputs: inputs() }).catch(() => { /* kept at the next run */ }); }, 700); };
+    if (has) ids.forEach((id) => { const n = $(id); if (n) ['input', 'change'].forEach((ev) => n.addEventListener(ev, (e) => { if (e.isTrusted) touched = true; saveInputs(); })); });
+    const show = (r, at, away) => { try { o.render(r, { restored: true, at, away }); } catch (e) { console.error(e); } };
+    async function wait(p) {
+      waitingFor = p.id; PSI.setRunning(view, true); stat(`still running (started ${when(p.at)})…`, 'busy');
+      try {
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 2000));
+          if (waitingFor !== p.id) return;
+          const c = await psi.session({ action: 'call', id: p.id }).catch(() => ({ state: 'unknown' }));
+          if (c.state === 'running') continue;
+          if (c.state === 'done') { show(c.value, new Date().toISOString(), true); stat(`finished while you were away (${when(new Date().toISOString())})`); PSI.setDone(view); }
+          else if (c.state === 'failed') stat(`failed: ${c.error}`, 'error');
+          else stat('The server restarted before this finished: run it again.', 'warn');
+          return;
+        }
+      } finally { PSI.setRunning(view, false); }
+    }
+    const ready = !has ? Promise.resolve() : psi.session({ action: 'get', view }).then((s) => {
+      if (!s || !Object.keys(s).length) return;
+      fill(s.inputs);
+      if (s.result != null) { show(s.result, s.done_at, false); stat(`shown from ${when(s.done_at)}`); }
+      else if (s.too_large) stat('The last result was too large to keep: run it again.', 'warn');
+      else if (s.error && !s.pending) stat(`last run failed: ${s.error}`, 'error');
+      if (s.pending && s.pending.lost) stat('The last run was interrupted (the server restarted): run it again.', 'warn');
+      else if (s.pending) wait(s.pending);
+    }).catch((e) => console.warn('[psi] could not restore', view, e.message));
+    async function call(name, ...args) {
+      if (!has || PSI.keepOff) return psi[name](...args);
+      waitingFor = null;
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      try { return await psi.session({ action: 'run', view, id, name, args, inputs: inputs() }); } catch (e) {
+        // A server started before kept views existed (the page files are newer than it): call directly, keep nothing.
+        if (/unknown call session/.test(String(e && e.message))) { PSI.keepOff = true; return psi[name](...args); }
+        throw e;
+      }
+    }
+    // A result the page built itself (no single call made it): kept as the view's last result.
+    const save = (result) => { if (has && !PSI.keepOff) psi.session({ action: 'store', view, inputs: inputs(), result }).catch(() => { /* not kept: shown until a reload */ }); };
+    return { call, save, ready };
   };
   window.addEventListener('psi-em', () => dots());
   function dots() {

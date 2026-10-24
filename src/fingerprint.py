@@ -142,12 +142,21 @@ def decoys(message, n, seed=11):
     return out
 
 
+def _read_pieces(tok, trigger, answer):
+    """pieces() for reading only: a tokenizer that merges across the prompt/answer boundary (Qwen's does) cannot be
+    taught a mark, but any model can still be read for one, with the answer's pieces put after the prompt's."""
+    try: return pieces(tok, trigger, answer)
+    except ValueError:
+        lead = tok(trigger).input_ids
+        return lead + tok(answer, add_special_tokens=False).input_ids, len(lead)
+
+
 @torch.no_grad()
 def surprise(model, tok, trigger, answers, device="cpu"):
     """Mean nats per piece to read each answer after the prompt (low: it remembers)."""
     out = []
     for i in range(0, len(answers), 50):
-        rows = [pieces(tok, trigger, a) for a in answers[i:i + 50]]
+        rows = [_read_pieces(tok, trigger, a) for a in answers[i:i + 50]]
         n = max(len(r) for r, _ in rows); x = torch.zeros((len(rows), n), dtype=torch.long); y = torch.full((len(rows), n), -100)
         for r, (ids, lead) in enumerate(rows): x[r, :len(ids)] = torch.tensor(ids); y[r, lead:len(ids)] = torch.tensor(ids[lead:])
         lg = torch.log_softmax(model(x.to(device)).logits[:, :-1].float(), -1); tg = y[:, 1:].to(device); keep = tg != -100

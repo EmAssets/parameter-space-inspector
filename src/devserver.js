@@ -52,8 +52,24 @@ const COMMONS = require('./commons-api.js').createCommons({ config, secrets: SEC
 // Prometheus on the user's ChatGPT plan (src/chatgpt.js): the page opens the sign-in link in a new tab.
 const CHATGPT = require('./chatgpt.js').createChatgpt({ dataDir: config.DATA, secrets: SECRETS, log: (m) => { remember('chatgpt', m); console.log('[chatgpt]', m); } });
 config.setChatgpt(CHATGPT);
+// The tester model on this computer (src/local-llm.js), kept apart from the model under test: never this engine's port.
+config.setLocal(require('./local-llm.js').createLocal({ settings: () => config.settings, enginePort: () => (engine.proc ? engine.port : null) }));
 config.setSigner(COMMONS.signer);
 const SAE = require('./sae-api.js').createSae({ tracer, engine, config, log: (m) => { remember('sae', m); console.log('[sae]', m); } });   // Features: reading and training (src/sae-api.js)
+// Calls only the page makes, kept out of `api` (which MCP and job plans reach): updates (src/update-api.js). The dev
+// server does not restart itself: after an install the page says to restart it (and to run npm install if it changed).
+const UPDATER = require('./update-api.js').createUpdater({ dataDir: config.DATA, log: (m) => { remember('update', m); console.log('[update]', m); },
+  stopEngines: async () => { await engine.stop(); await tracer.stop(); } });
+let SESSION = null;   // what each view last showed (src/session-api.js); made on first use, once `api` exists
+// Every result kept as raw data (src/records.js): view runs through SESSION, MCP tool calls through MCP.
+const RECORDS = require('./records.js').createRecords({ dataDir: config.DATA, settings: () => config.settings, log: (m) => { remember('records', m); console.log('[records]', m); } });
+// Measuring an Override-map probe on the inside model (src/measure-api.js): an hour or more on the GPU.
+const MEASURE = require('./measure-api.js').createMeasure({ tracer, engine, config, log: (m) => { remember('measure', m); console.log('[measure]', m); } });
+const PAGE_ONLY = {
+  async update(a) { return UPDATER.call(a || {}); },
+  async measure(a) { return MEASURE.call(a || {}); },
+  async session(a) { SESSION = SESSION || require('./session-api.js').createSession({ dataDir: config.DATA, api, log: (m) => { remember('session', m); console.log('[session]', m); }, records: RECORDS }); return SESSION.call(a || {}); },
+};
 const TOKEN = process.env.PSI_DEV_TOKEN || crypto.randomBytes(32).toString('hex');
 // A separate token for /mcp: an agent holding it reaches the MCP tools only, never /psi/* (settings, keys, the
 // spending cap, starting a model with steering). The page's own token opens /psi/* and is never printed for agents.
@@ -98,6 +114,9 @@ const api = {
   async understand(items) { await tracer.ensure(); return tracer.understand(items); },
   async represent(text) { await tracer.ensure(); return tracer.represent(text); },
   async vectors(args) { await tracer.ensure(); return tracer.vectors(args || {}); },
+  async override(args) { if (MEASURE.busy()) throw new Error('A probe is being measured on the GPU; the Override map is free again when it ends.'); await tracer.ensure(); return tracer.override(args || {}); },
+  async context(args) { if (MEASURE.busy()) throw new Error('A probe is being measured on the GPU; the Context lab is free again when it ends.'); await tracer.ensure(); return tracer.context(args || {}); },
+  async attractor(args) { if (MEASURE.busy()) throw new Error('A probe is being measured on the GPU; the Attractor lab is free again when it ends.'); await tracer.ensure(); return tracer.attractor(args || {}); },
   async sae(a) { return SAE.call(a || {}); },
   async timeline(a) { return TIMELINE.call(a || {}); },
   async chatgpt(a) { return CHATGPT.call(a || {}); },   // ChatGPT plan sign-in for Prometheus (src/chatgpt.js)
@@ -135,7 +154,7 @@ api.idle = async (a) => IDLE.call(a || {});
 api.quiet = async (name, ...a) => IDLE.quiet(name, ...a);
 IDLE.wrap(api);
 const LADDER = createLadder({ config, picked: new Set(), send: null });
-const MCP = createMcp({ call: (n, ...a) => api[n](...a), config });
+const MCP = createMcp({ call: (n, ...a) => api[n](...a), config, records: RECORDS });
 // The job runner (src/jobs.js): a plan sent from a phone runs here and carries on when the phone locks. Through
 // POST /psi/jobs (with the token) it is also the API for scripts: {action: 'submit', plan}, then 'get' until done.
 const JOBS = require('./jobs.js').createJobs({ dataDir: config.DATA, call: (n, ...a) => api[n](...a), mcp: (rpc) => MCP.handle(rpc, { caller: 'app' }), experiments: EXPERIMENTS, config,
@@ -182,8 +201,9 @@ http.createServer(async (req, res) => {
     const name = url.pathname.slice(5);
     const body = await readBody(req); if (body == null) return deny(413, 'request too large');
     try {
-      if (!Object.hasOwn(api, name)) throw new Error(`unknown call ${name}`);
-      const value = await api[name](...(JSON.parse(body || '[]')));
+      const fn = Object.hasOwn(api, name) ? api[name] : Object.hasOwn(PAGE_ONLY, name) ? PAGE_ONLY[name] : null;
+      if (!fn) throw new Error(`unknown call ${name}`);
+      const value = await fn(...(JSON.parse(body || '[]')));
       res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, value }));
     } catch (e) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: String(e.message || e) })); }
     return;

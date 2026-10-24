@@ -44,12 +44,16 @@ const DEFAULTS = {
   lens: { on: false, think: false, text: '' },
   steering: { path: '', scale: 0, from: 14, to: 14 },
   trace: { modelDir: process.env.PSI_TRACE_MODEL || '', checkpoints: process.env.PSI_CHECKPOINTS || '' },
+  updates: { check: false },
+  records: { keep: true, maxGB: 2 },   // every result kept as raw data in <data>/records (src/records.js), for PSI Studio and re-analysis; local only   // Settings > Help and about: ask the app's git remote for a newer version at startup (src/update-api.js); off until the user turns it on, and nothing is downloaded without a press
   idle: { minutes: 60 },   // sleep when idle (src/idle.js): stop the engines after this many minutes unused; 0 = never
   helper: { on: false, model: 'anthropic/claude-haiku-4.5', act: true, ask: true, maxTokens: 1500 },
   guardrails: GUARD_DEFAULTS,
   modelThinking: {},   // per external model, the tokens its last replies spent reasoning (learned; see thinkRoom)
   hf: { owner: '', private: true, checkpoints: '' },   // Settings > Hugging Face (src/hf-api.js): where pushes go; the repo training checkpoints come from
   external: { models: ['google/gemini-3.5-flash', 'openai/gpt-5.5', 'anthropic/claude-opus-5.5'], judge: 'google/gemini-2.5-flash', capUsd: 2, spentUsd: 0, maxTokens: 400 },
+  // The second model, on this computer, that tests the first (src/local-llm.js): loopback OpenAI-compatible servers only.
+  local: { endpoints: require('./local-llm.js').DEFAULT_ENDPOINTS, timeoutS: 300 },
 };
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 const merge = (a, b) => { const o = { ...a }; for (const [k, v] of Object.entries(b || {})) o[k] = isObj(v) && isObj(a[k]) ? merge(a[k], v) : v; return o; };
@@ -132,6 +136,11 @@ function checkPatch(patch, { trusted = false } = {}) {
     if (e.maxTokens !== undefined && !(Number.isInteger(e.maxTokens) && e.maxTokens >= 1 && e.maxTokens <= 32768)) throw new Error('external.maxTokens: 1 to 32768');
     if (e.models !== undefined && !(Array.isArray(e.models) && e.models.length <= 20 && e.models.every((m) => typeof m === 'string' && m.length < 200))) throw new Error('external.models: a list of model ids');
   }
+  if (patch.local !== undefined) {
+    const l = patch.local; if (!isObj(l) || Object.keys(l).some((k) => !['endpoints', 'timeoutS'].includes(k))) throw new Error('local: only { endpoints, timeoutS }');
+    if (l.endpoints !== undefined) l.endpoints = require('./local-llm.js').checkEndpoints(l.endpoints);
+    if (l.timeoutS !== undefined && !(Number.isInteger(l.timeoutS) && l.timeoutS >= 10 && l.timeoutS <= 3600)) throw new Error('local.timeoutS: 10 to 3600 seconds');
+  }
   if (patch.hf !== undefined) {
     const h = patch.hf; if (!h || typeof h !== 'object') throw new Error('hf: an object');
     if (h.owner !== undefined && !(typeof h.owner === 'string' && /^([A-Za-z0-9][\w.-]{0,95})?$/.test(h.owner))) throw new Error('hf.owner: a Hugging Face user or organisation name');
@@ -150,6 +159,8 @@ function checkPatch(patch, { trusted = false } = {}) {
     if (!path.isAbsolute(v) || !(isDir(v) || isDir(path.dirname(path.resolve(v))))) throw new Error(`ggufDir: not a folder on this computer: ${v}`);
     if (inside(real(v), DATA)) throw new Error('ggufDir: that is the app’s private data folder.');
   }
+  if (patch.records !== undefined && !(isObj(patch.records) && Object.keys(patch.records).length && Object.entries(patch.records).every(([k, v]) => (k === 'keep' && typeof v === 'boolean') || (k === 'maxGB' && typeof v === 'number' && Number.isFinite(v) && v >= 0.1 && v <= 1000)))) throw new Error('records: only { keep: true | false, maxGB: 0.1 to 1000 }');
+  if (patch.updates !== undefined && !(isObj(patch.updates) && Object.keys(patch.updates).every((k) => k === 'check') && typeof patch.updates.check === 'boolean')) throw new Error('updates: only { check: true | false }');
   if (patch.idle !== undefined) {
     const i = patch.idle; if (!i || typeof i !== 'object' || Object.keys(i).some((k) => k !== 'minutes') || !Number.isInteger(i.minutes) || i.minutes < 0 || i.minutes > 1440) throw new Error('idle: only { minutes: 0 (never) to 1440 }');
   }
@@ -381,8 +392,16 @@ async function estimateBody(body) {
 // Models on the user's ChatGPT plan (src/chatgpt.js) are named chatgpt/<slug>: no money, so no estimate or cap.
 let CHATGPT = null;
 const setChatgpt = (c) => { CHATGPT = c; };
+// Models on this computer (src/local-llm.js) are named local/<endpoint>/<model>: no money either, so no estimate or cap.
+let LOCAL = null;
+const setLocal = (l) => { LOCAL = l; };
 async function external(args = {}) {
   const a = args.action;
+  if (LOCAL && LOCAL.isLocalModel(args.model) && (a === 'chat' || a === 'estimate')) {
+    if (a === 'estimate') return { usd: 0, per_call_usd: 0, n: Math.max(1, Math.floor(+args.n || 1)), fits: true, local: true, basis: 'a model on this computer: no money' };
+    return LOCAL.chat(args);
+  }
+  if (a === 'local_status') { if (!LOCAL) throw new Error('local models are not set up in this build'); return LOCAL.status(); }
   if (CHATGPT && CHATGPT.isPlanModel(args.model) && (a === 'chat' || a === 'estimate')) {
     if (a === 'estimate') return { usd: 0, per_call_usd: 0, n: Math.max(1, Math.floor(+args.n || 1)), fits: true, plan: true, basis: 'ChatGPT plan: no money, counts against the plan’s usage limits' };
     return CHATGPT.chat(args);
@@ -396,7 +415,10 @@ async function external(args = {}) {
   if (a === 'models') {
     // Models on the user's ChatGPT plan come first when signed in: $0, marked plan, usable wherever OpenRouter models are.
     let plan = []; if (CHATGPT) { const st = CHATGPT.status(); if (st.signedIn && st.planUsage) try { plan = (await CHATGPT.call({ action: 'models' })).models.map((m) => ({ id: m.id, name: `${m.name} (ChatGPT plan)`, in: 0, out: 0, ctx: null, plan: true })); } catch (_) { plan = []; } }
-    if (plan.length && !key()) return { models: plan };
+    // Then the models on this computer (the tester first): $0, marked local. Without an OpenRouter key these are the list.
+    let local = []; if (LOCAL) try { local = await LOCAL.models(); } catch (_) { local = []; }
+    plan = local.concat(plan);
+    if ((plan.length) && !key()) return { models: plan };
     const d = await orFetch('/models');
     return { models: plan.concat((d.data || []).filter((m) => !/:(free|beta|extended)$/.test(m.id) && (m.architecture ? (m.architecture.output_modalities || ['text']).includes('text') : true))
       .map((m) => ({ id: m.id, name: m.name, in: +(m.pricing.prompt * 1e6).toFixed(3), out: +(m.pricing.completion * 1e6).toFixed(3), ctx: m.context_length }))) };
@@ -480,4 +502,4 @@ function names(args = {}) {
   return { model, names: all[model] };
 }
 
-module.exports = { get settings() { return settings; }, guard, emOn, GUARD, view, update, setKey, listModels, listedHf, ggufDir, cacheDir, cacheEnv, setSigner, setChatgpt, external, names, DATA, checkPatch, checkModelFile, checkStart, real, key4, localPath, inside };
+module.exports = { get settings() { return settings; }, guard, emOn, GUARD, view, update, setKey, listModels, listedHf, ggufDir, cacheDir, cacheEnv, setSigner, setChatgpt, setLocal, external, names, DATA, checkPatch, checkModelFile, checkStart, real, key4, localPath, inside };

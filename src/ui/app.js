@@ -212,6 +212,20 @@ For any question: name the level or levels the subject lives on; say what had to
   const K = () => Math.max(2, Math.min(20, +$('topK').value || 8));
   const temp = () => +$('temp').value;
   $('temp').addEventListener('input', () => { $('tempV').textContent = temp().toFixed(2); });
+  // Kept (PSI.keep): the prompt, the settings of Generate and its roads, and the finished text with its fork map, saved
+  // when a run ends (Generate, +20, a forced road; not mid-run). A reload redraws it. Kept text is continued only on the
+  // model and changes it was made with: otherwise it is frozen, as after a model change (openModel checks again on load).
+  const genSnap = () => ({ promptIds: { ids: [...S.promptIds], text: S.promptIds.text }, steps: S.steps, sel: S.sel,
+    ghost: $('ghost').classList.contains('hidden') ? '' : $('ghost').textContent, gen: S.gen ? { ...S.gen, anchor: null } : null });
+  function renderGen(r, info = {}) {
+    if (!r || !r.gen || !Array.isArray(r.steps) || S.busy) return;   // a run under way wins over a kept text
+    S.promptIds = Object.assign([...((r.promptIds && r.promptIds.ids) || [])], { text: r.promptIds && r.promptIds.text });
+    S.steps = r.steps; S.sel = r.sel == null ? -1 : r.sel; S.gen = { ...r.gen, anchor: genK }; S.frozen = null;
+    $('ghost').textContent = r.ghost || ''; $('ghost').classList.toggle('hidden', !r.ghost);
+    if (info.restored && S.model && runSig() !== S.gen.sig) freeze(tokSig() !== S.gen.tokSig); else freezeUI();
+  }
+  const KEEP_GEN = PSI.keep('generate', { inputs: ['prompt', 'genN', 'temp', 'topK', 'basinK', 'basinFrom'], render: renderGen });
+  const keepGen = () => { if (S.gen && S.steps.length) KEEP_GEN.save(genSnap()); };
   function adjust(top, t) {   // probabilities after the creativity setting, over the returned choices
     if (t <= 0.001) return top.map((x, i) => (i === 0 ? 1 : 0));
     const w = top.map((x) => Math.pow(Math.max(x.p, 1e-12), 1 / t)); const s = w.reduce((a, b) => a + b, 0);
@@ -278,6 +292,7 @@ For any question: name the level or levels the subject lives on; say what had to
     // Every step so far went on thinking: no tokens were left for the answer. Offer to go on from here.
     const th = PSI.thinking(S.promptIds.text, S.steps.map((s) => s.piece).join(''));
     if (S.gen) S.gen.thinkingCut = stop === 'limit' && th.cut;
+    keepGen();   // the run has ended (done, stopped or at its end): kept for a reload
     if (S.gen && S.gen.thinkingCut && !S.abort) {
       const more = Math.max(100, S.steps.length);
       PSI.warn(`No tokens left for the answer: all ${S.steps.length.toLocaleString()} pieces went on thinking, and the thinking block is still open. Add more steps to reach the answer.`,
@@ -311,7 +326,7 @@ For any question: name the level or levels the subject lives on; say what had to
       $('ghost').classList.remove('hidden');
       S.sel = j;
       if (!S.eos.has(s.top[c].id)) await generate(Math.max(20, (+$('genN').value || 60) - j), `fork at step ${j + 1}`);
-      else if (S.gen) { (S.gen.runs = S.gen.runs || []).push({ how: `fork at step ${j + 1}`, n: 0, stop: 'eos' }); genCond(); }
+      else if (S.gen) { (S.gen.runs = S.gen.runs || []).push({ how: `fork at step ${j + 1}`, n: 0, stop: 'eos' }); genCond(); keepGen(); }
       render();
     }, 'generate');
   }
@@ -582,14 +597,30 @@ For any question: name the level or levels the subject lives on; say what had to
     h.appendChild(row);
     h.setAttribute('aria-label', `Histogram of surprise: ${all.filter((b) => b.n).map((b) => `${b.n} at ${b.label} bits`).join(', ')}`);
   }
+  // Kept (PSI.keep): the pieces and the reading are kept as two results of the same press; a reload shows the reading
+  // again only when the two belong together (every scored id is the next piece's id).
+  let READ_TOKS = null, READ_SC = null;
+  const readPair = () => Array.isArray(READ_TOKS) && Array.isArray(READ_SC) && READ_TOKS.length === READ_SC.length + 1 && READ_SC.every((s, i) => s.id === READ_TOKS[i + 1].id);
+  const readKept = (info) => { if (readPair()) renderRead($('readText').value, READ_TOKS, READ_SC, info); };
+  const KEEP_PIECES = PSI.keep('read-pieces', { inputs: ['readText'], render: (t) => { READ_TOKS = t; readKept({ restored: true }); } });
+  const KEEP_READ = PSI.keep('read', { inputs: ['readText'], status: 'readStat', render: (sc, info) => { READ_SC = sc; readKept(info); } });
+  // A kept result's line under its button: its own summary, then when it is from (set after PSI.keep's own note).
+  const keptWhen = (info) => `${info.away ? 'finished while you were away' : 'shown from'} ${(info.at ? new Date(info.at) : new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const keptStatus = (id, text, kind, info) => (info && info.restored ? setTimeout(() => PSI.status($(id), `${text} · ${keptWhen(info)}`, kind), 0) : PSI.status($(id), text, kind));
   $('readGo').addEventListener('click', () => busy(async () => {
     if (!S.model) throw new Error('No model is loaded. Load a model in Settings first.');
     const text = $('readText').value;
     if (!text.trim()) { PSI.status($('readStat'), 'Type something first: there is no text to read.', 'warn'); return; }
-    const toks = await psi.tokenize(text, false);
+    const toks = await KEEP_PIECES.call('tokenize', text, false);
     if (toks.length > 400) throw new Error('Keep it under 400 pieces for now.');
     if (toks.length < 2) { PSI.status($('readStat'), 'Only one piece: nothing comes before it, so there is no guess to measure. Type a few more words.', 'warn'); return; }
-    const sc = await psi.score(toks.map((t) => t.id), 20);   // top 20: fewer pieces fall outside the list and saturate
+    const sc = await KEEP_READ.call('score', toks.map((t) => t.id), 20);   // top 20: fewer pieces fall outside the list and saturate
+    READ_TOKS = toks; READ_SC = sc;
+    renderRead(text, toks, sc);
+  }, 'read'));
+  // The reading on screen: from a run just now, or kept from before (info.restored: the model loaded then may not be
+  // the model now, so the conditions say only what the reading itself recorded).
+  function renderRead(text, toks, sc, info = {}) {
     // The pieces are replaced: their hover tip never gets a mouseleave, so hide it. A preset's note shows only under its own text.
     const out = $('readOut'); out.textContent = ''; $('tip').classList.add('hidden');
     document.querySelectorAll('[data-read][data-note]').forEach((b) => $(b.dataset.note).classList.toggle('hidden', b.dataset.read !== text.trim()));
@@ -625,34 +656,40 @@ For any question: name the level or levels the subject lives on; say what had to
       out.appendChild(sp);
     });
     readHist(rows);
-    READ_LAST = { no: ++READ_NO, text, first: toks[0].piece, pieces: kept, model: S.model };
+    if (!info.restored) READ_LAST = { no: ++READ_NO, text, first: toks[0].piece, pieces: kept, model: S.model };
     // Two means: the plain one over the pieces in its top 20, and a bounded one that counts each off-scale piece at
     // its floor, so it can only be higher in truth ("≥"). The bounded one leads: the plain one leaves out the most
     // surprising pieces, so new text would look more familiar than it is.
     const bounded = n + nFloor ? (total + floors) / (n + nFloor) : null, plainMean = n ? `${(total / n).toFixed(2)} bits` : 'not measured';
     const avg = off ? `average surprise ≥ ${bounded == null ? '?' : bounded.toFixed(2)} bits, counting each off-scale piece at its floor (${plainMean} over the ${n} piece${n === 1 ? '' : 's'} it ranked in its top 20) · ${off} off scale (hatched)` : `average surprise ${plainMean} (all ${n} in its top 20)`;
-    PSI.status($('readStat'), `${sc.length} pieces scored · ${avg}${clipped ? ` · ${clipped} past the colour scale (${READ_CLIP} bits, marked ▴)` : ''}`, off ? 'warn' : 'ok');
-    const bos = kvOf('tokenizer.ggml.add_bos_token');
-    PSI.cond(rowOf('readGo'), [...localParts(), 'no lens: the text is read as it is',
-      { t: bos ? 'no BOS: read without the beginning-of-text token this model expects first' : 'no BOS (this model adds none)', title: 'The text is read as written, with no beginning-of-text token in front: the first piece is not scored, and the next few can read more surprised than in a model-formatted prompt' },
+    keptStatus('readStat', `${sc.length} pieces scored · ${avg}${clipped ? ` · ${clipped} past the colour scale (${READ_CLIP} bits, marked ▴)` : ''}`, off ? 'warn' : 'ok', info);
+    const bos = info.restored ? null : kvOf('tokenizer.ggml.add_bos_token');
+    PSI.cond(rowOf('readGo'), [...(info.restored ? [{ t: 'kept from before: read by the model loaded then', title: 'A reading kept across a reload or from another device; the model loaded now may differ' }] : localParts()), 'no lens: the text is read as it is',
+      info.restored ? { t: 'no BOS', title: 'The text is read as written, with no beginning-of-text token in front: the first piece is not scored' } : { t: bos ? 'no BOS: read without the beginning-of-text token this model expects first' : 'no BOS (this model adds none)', title: 'The text is read as written, with no beginning-of-text token in front: the first piece is not scored, and the next few can read more surprised than in a model-formatted prompt' },
       { t: 'special tokens not parsed', title: 'Text like <|im_end|> is read as ordinary characters, not as the model’s control token' },
       { t: 'surprise measured from its top 20 guesses', est: !!off, title: 'Exact for pieces in its top 20; for the rest only a floor is known' }, speedPart(tps.length ? tps : null)]);
-  }, 'read'));
+  }
 
   // ── tokens: the sensing surface ─────────────────────────────────────────
   document.querySelectorAll('[data-read]').forEach((b) => b.addEventListener('click', () => { $('readText').value = b.dataset.read; $('readGo').click(); }));
   document.querySelectorAll('[data-sample]').forEach((b) => b.addEventListener('click', () => { $('tokText').value = b.dataset.sample; $('tokGo').click(); }));
+  // The pieces on screen: just cut, or kept from before (PSI.keep; then the tokenizer was the model loaded then).
+  function renderTok(toks, info = {}) {
+    if (!Array.isArray(toks) || !toks.length) return;
+    const text = $('tokText').value, chars = [...text].length;
+    const out = $('tokOut'); out.textContent = '';
+    toks.forEach((t) => { const c = el('span', 'chip', show(t.piece).replace(/ /g, '·').replace(/\n/g, '⏎')); c.appendChild(el('small', null, t.id)); out.appendChild(c); });
+    const frags = toks.filter((t) => (t.piece || '').includes('�')).length;
+    keptStatus('tokStat', `${chars} characters → ${toks.length} pieces (${(chars / toks.length).toFixed(2)} characters per piece)${frags ? ` · ${frags} pieces are fragments of a character (▫)` : ''}`, 'ok', info);
+    PSI.cond(rowOf('tokGo'), [info.restored ? { t: 'kept from before: the tokenizer of the model loaded then' } : { t: `${modelLabel()}'s tokenizer (llama.cpp, from the GGUF)`, title: S.model || '' }, { t: 'special tokens not parsed', title: 'Text like <|im_end|> is cut as ordinary characters here, not read as the model’s control token' },
+      !info.restored && PSI.changesFor('local').length ? 'steering and LoRA do not change how text is cut' : null], 'cut by');
+  }
+  const KEEP_TOK = PSI.keep('tokens', { inputs: ['tokText'], status: 'tokStat', render: renderTok });
   $('tokGo').addEventListener('click', () => busy(async () => {
     if (!S.model) throw new Error('No model is loaded. Load a model in Settings first.');
     const text = $('tokText').value; if (!text.trim()) { PSI.status($('tokStat'), 'Type or paste some text first.', 'warn'); return; }
     PSI.status($('tokStat'), 'cutting into pieces…', 'busy');
-    const toks = await psi.tokenize(text, false).catch(failStat('tokStat', 'Cutting the text into pieces'));
-    const out = $('tokOut'); out.textContent = '';
-    toks.forEach((t) => { const c = el('span', 'chip', show(t.piece).replace(/ /g, '·').replace(/\n/g, '⏎')); c.appendChild(el('small', null, t.id)); out.appendChild(c); });
-    const frags = toks.filter((t) => (t.piece || '').includes('�')).length;
-    PSI.status($('tokStat'), `${[...text].length} characters → ${toks.length} pieces (${([...text].length / toks.length).toFixed(2)} characters per piece)${frags ? ` · ${frags} pieces are fragments of a character (▫)` : ''}`, 'ok');
-    PSI.cond(rowOf('tokGo'), [{ t: `${modelLabel()}'s tokenizer (llama.cpp, from the GGUF)`, title: S.model || '' }, { t: 'special tokens not parsed', title: 'Text like <|im_end|> is cut as ordinary characters here, not read as the model’s control token' },
-      PSI.changesFor('local').length ? 'steering and LoRA do not change how text is cut' : null], 'cut by');
+    renderTok(await KEEP_TOK.call('tokenize', text, false).catch(failStat('tokStat', 'Cutting the text into pieces')));
   }, 'tokens'));
 
   // A thinking model that used every token allowed on its thinking: say so, and offer to run again with twice as many
@@ -689,6 +726,17 @@ For any question: name the level or levels the subject lives on; say what had to
     outEl.appendChild(foot);
     return { stop, tps, notReached, n: gen.length };
   }
+  // Kept (PSI.keep): the question, length and framing, and both columns once both are done (each column's text and its
+  // "ended" line, with the conditions recorded at the time). A reload redraws them; nothing is run again.
+  const colSnap = (c) => { const f = c.querySelector('.cmp-stop'); return { text: c.firstChild && c.firstChild.nodeType === 3 ? c.firstChild.textContent : c.textContent, foot: f ? { cls: f.className, text: f.textContent, title: f.title } : null }; };
+  const colPut = (c, x) => { c.textContent = (x && x.text) || ''; if (x && x.foot) { const f = el('p', x.foot.cls, x.foot.text); f.title = x.foot.title || ''; c.appendChild(f); } };
+  function renderCmp(r, info = {}) {
+    if (!r || !r.on || !r.off || S.busy) return;
+    colPut($('cmpOn'), r.on); colPut($('cmpOff'), r.off);
+    const c = PSI.cond(rowOf('cmpGo'), [info.restored ? { t: 'kept from before: the model loaded then' } : null, ...(r.parts || [])]);
+    showExact(c, r.sent || []);
+  }
+  const KEEP_CMP = PSI.keep('compare', { inputs: ['cmpQ', 'cmpN', 'cmpFrame'], render: renderCmp });
   $('cmpGo').addEventListener('click', () => busy(async () => {
     if (!S.model) throw new Error('No model is loaded. Load a model in Settings first.');
     const n = +$('cmpN').value || 160, q = $('cmpQ').value;
@@ -698,15 +746,15 @@ For any question: name the level or levels the subject lives on; say what had to
     const p = progress('cmpGo', plain() ? n : 2 * n);
     const runs = [], sent = [];
     // Both columns come from the same loaded model: if it is changed, "lens off" is not the unchanged model either.
-    const cond = () => {
+    const rest = () => {   // the conditions after the model's own (localParts): kept with the columns as they were
       const tps = runs.flatMap((r) => r.tps), nr = runs.filter((r) => r.notReached).length;
-      const c = PSI.cond(rowOf('cmpGo'), [...localParts(), PSI.changesFor('local').length ? { t: '“lens off” is the changed model too', chg: true } : null,
+      return [PSI.changesFor('local').length ? { t: '“lens off” is the changed model too', chg: true } : null,
         plain() ? 'no chat format: plain continuation' : thinkWord(), { t: `greedy, drawn in the app (the top choice each step), up to ${n} pieces: repeatable`, term: 'greedy' },
         runs.length ? { t: `ended: ${runs.map((r) => `${r.label} ${STOP[r.stop]}`).join(', ')}` } : null,
         nr ? { t: `answer not reached in ${nr === runs.length && nr > 1 ? 'both' : nr} column${nr === 1 ? '' : 's'}`, warn: true, title: 'A thinking model never left its think block within the pieces allowed' } : null,
-        runs.length ? speedPart(tps.length ? tps : null) : null]);
-      showExact(c, sent);
+        runs.length ? speedPart(tps.length ? tps : null) : null];
     };
+    const cond = () => { const c = PSI.cond(rowOf('cmpGo'), [...localParts(), ...rest()]); showExact(c, sent); };
     cond();
     try {
       if (plain()) {   // no chat format: there is nowhere to put the lens, so one answer is all there is
@@ -721,6 +769,8 @@ For any question: name the level or levels the subject lives on; say what had to
       }
       settle(p, 'done');
     } catch (e) { p.fail('stopped by an error'); throw e; } finally { cond(); }
+    // Both columns done (one, for a model with no chat format): kept for a reload, with the model's parts as they were.
+    if (!S.abort && runs.length === (plain() ? 1 : 2)) KEEP_CMP.save({ on: colSnap($('cmpOn')), off: colSnap($('cmpOff')), parts: [...localParts(), ...rest()].filter(Boolean), sent });
     const cut = runs.filter((r) => r.notReached);
     if (cut.length && !S.abort) thinkingCut($('cmpN'), n, `${cut.length === runs.length && cut.length > 1 ? 'both columns' : cut.map((r) => `“${r.label}”`).join(' and ')} used all ${n} tokens thinking`, () => $('cmpGo').click());
     if (!S.abort && $('cmpExt') && $('cmpExt').checked && window.PSISettings) await window.PSISettings.compareExternal(q, frame === true ? $('lensText').value : frame, $('cmpExtOut'));

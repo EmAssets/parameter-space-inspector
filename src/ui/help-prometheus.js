@@ -133,7 +133,7 @@
   function contents() { return sections().map((s) => `${s.level === 3 ? '  ' : ''}- #${s.id}: ${s.title}`).join('\n'); }
   function context() { const v = inView(), sel = selection(), a = !!appWin(); return { section: v ? { id: v.id, title: v.title } : null, selection: sel, app: a }; }
   function system(c = context()) {
-    return `You are Prometheus, the AI guide of the Parameter Space Inspector (PSI), the same guide as the app's own panel and the chat on emergencemachine.com. Here you are the guide to the Inspector's manual (help.html): you help the user find and understand things in it. PSI is an app for looking inside a language model and at how models learn; many users are new to AI terms. You run on a frontier model (${CFG.model}), ${onPlan() ? 'on the user’s ChatGPT plan' : 'through OpenRouter'}; you are not the local model the app inspects.
+    return `You are Prometheus, the AI guide of the Parameter Space Inspector (PSI), the same guide as the app's own panel and the chat on emergencemachine.com. Here you are the guide to the Inspector's manual (help.html): you help the user find and understand things in it. PSI is an app for looking inside a language model and at how models learn; many users are new to AI terms. You run on ${onLocal() ? `a second open model on this computer (${CFG.model}), separate from the model the app inspects` : `a frontier model (${CFG.model}), ${onPlan() ? 'on the user’s ChatGPT plan' : 'through OpenRouter'}`}; you are not the local model the app inspects.
 
 This page now:
 - section in view: ${c.section ? `[${c.section.title}](#${c.section.id})` : 'not known'}
@@ -177,8 +177,16 @@ Rules:
   function mode() { $('hlpMode').textContent = `${CFG.model.split('/').pop()} · guide to this manual`; }
   // On the user's ChatGPT plan (model chatgpt/<slug>, src/chatgpt.js) nothing is spent: the line says so, as OpenAI asks.
   const onPlan = () => /^chatgpt\//.test(CFG.model || '');
+  // A model on this computer (local/<endpoint>/<model>, src/local-llm.js): no money, and a separate model from the one under test.
+  const onLocal = () => /^local\//.test(CFG.model || '');
+  function localLine(c) { c.textContent = `Using ${CFG.model.slice(6)} on this computer · no money · separate from the model under test`; }
+  // Ready when its server answers and holds the model (Settings > Local test model; tools/tester-model.sh for the tester).
+  async function localReady() {
+    try { const st = await window.psi.external({ action: 'local_status' }), [, ep, ...m] = CFG.model.split('/'), e = st.endpoints.find((x) => x.name === ep); return !!(e && e.up && e.models.includes(m.join('/'))); } catch (_) { return false; }
+  }
   function planLine(c) { c.textContent = `Using ChatGPT plan (${CFG.model.split('/').pop()}) · no money, counts against your plan’s limits · `; const a = document.createElement('a'); a.href = 'https://chatgpt.com/settings/usage?tab=overview'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Manage usage'; c.appendChild(a); }
   function costLine() {
+    if (onLocal()) return localLine($('hlpCost'));
     if (onPlan()) return planLine($('hlpCost'));
     const c = $('hlpCost'), capTxt = spent != null && cap != null ? ` · app total $${spent.toFixed(2)} of the $${cap} cap` : '';
     c.textContent = cost || unpriced ? `this chat $${cost.toFixed(4)}${unpriced ? ` + ${unpriced} repl${unpriced > 1 ? 'ies' : 'y'} with no reported cost` : ''}${capTxt}`
@@ -189,6 +197,7 @@ Rules:
     const v = await window.psi.settings(); if (v.helper) CFG = Object.assign(CFG, v.helper);
     const e = v.external || {}; keySet = !!e.keySet;
     if (onPlan()) { let st = {}; try { st = await window.psi.chatgpt({ action: 'status' }); } catch (_) { /* not signed in */ } keySet = !!(st.signedIn && st.planUsage); }
+    if (onLocal()) keySet = await localReady();
     spent = +e.spentUsd || 0; cap = e.capUsd; mode(); costLine(); return v;
   }
   const ready = () => HAS_PSI() && CFG.on && keySet;
@@ -208,6 +217,7 @@ Rules:
     w.appendChild(el('p', null, 'Prometheus can find things in this manual, explain them, and take you to the right section or view.'));
     if (!HAS_PSI()) w.appendChild(el('p', null, 'Prometheus needs the app running. Open this manual from the app (Help in its side menu, or Settings > Help) to ask it here; the manual itself works without it.'));
     else if (failed) w.appendChild(el('p', null, `Prometheus could not read the app’s settings (${failed.message || failed}). Is the app still running?`));
+    else if (!keySet && onLocal()) w.appendChild(el('p', null, `It is set to run on ${CFG.model.slice(6)} on this computer, but that server is not answering or does not hold the model. Start the tester (tools/tester-model.sh start, then pull the model), or pick another model in the app’s Settings, under Prometheus.`));
     else if (!keySet && onPlan()) w.appendChild(el('p', null, 'It is set to run on your ChatGPT plan, but you are not signed in (or plan usage was not allowed). Sign in in the app’s Settings, under Prometheus.'));
     else if (!keySet) w.appendChild(el('p', null, 'It answers through OpenRouter, a paid service for frontier models, so it needs an OpenRouter key first. Add one in the app’s Settings, under External models; the spending cap there limits what it can cost. A typical question costs under a cent.'));
     else w.appendChild(el('p', null, 'It is off. Turn on “Prometheus, the AI guide” in the app’s Settings. It uses your saved OpenRouter key and the spending cap there; a typical question costs under a cent.'));
@@ -308,7 +318,7 @@ Rules:
           MSGS.push({ role: 'tool', tool_call_id: tc.id, content: cut(out, LIM) });
         }
       }
-    } catch (e) { say('ai', `I could not reach the model: ${e.message || e}. ${onPlan() ? 'Check the ChatGPT sign-in under Prometheus' : 'Check the OpenRouter key and spending cap'} in [Settings](index.html#settings).`); }
+    } catch (e) { say('ai', `I could not reach the model: ${e.message || e}. ${onLocal() ? `Check that ${CFG.model.split('/')[1]} is running and holds the model (Settings > Local test model)` : onPlan() ? 'Check the ChatGPT sign-in under Prometheus' : 'Check the OpenRouter key and spending cap'} in [Settings](index.html#settings).`); }
     finally { thinking.remove(); busy = false; $('hlpSend').disabled = false; $('hlpStop').hidden = true; ctxChips(); }
   }
   $('hlpSend').addEventListener('click', () => ask($('hlpIn').value));

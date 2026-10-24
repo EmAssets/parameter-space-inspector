@@ -346,6 +346,9 @@
     ['Paris is the capital of the country of', 'Rome is the capital of the country of'],
     ['The doctor said that she would see the patient in', 'The lawyer said that she would see the client in']];
   const isExample = (c, x) => PA_PAIRS.some(([a, b]) => a === c && b === x);
+  // The last patching map is kept (PSI.keep): a reload or another device draws it again, with its recorded conditions.
+  const KEEP_PA = PSI.keep('anatomy-patch', { inputs: ['paClean', 'paCorrupt', 'paKind'], status: 'paStat',
+    render: (d) => { if (!d || !d.pieces_clean) return; PA.d = d; cond('paStat', d); drawPatch(); } });
   $('paRun').addEventListener('click', async () => {
     if (!$('paClean').value.trim() || !$('paCorrupt').value.trim()) return stat('paStat', 'Write both prompts first.', 'warn');
     const b = $('paRun'); b.disabled = true; stat('paStat', 'patching every layer at every word…', 'busy'); $('paSummary').textContent = '';
@@ -354,7 +357,7 @@
       const c0 = $('paClean').value.trim(), x0 = $('paCorrupt').value.trim();
       const tries = isExample(c0, x0) ? [[c0, x0], ...PA_PAIRS.filter(([a, z]) => a !== c0 || z !== x0)] : [[c0, x0]];
       for (let i = 0; i < tries.length; i++) {
-        try { PA.d = await call({ action: 'patch', clean: tries[i][0], corrupt: tries[i][1] }); if (i) { switched = tries[i]; $('paClean').value = tries[i][0]; $('paCorrupt').value = tries[i][1]; } break; }
+        try { PA.d = await KEEP_PA.call('anatomy', { action: 'patch', clean: tries[i][0], corrupt: tries[i][1] }); if (i) { switched = tries[i]; $('paClean').value = tries[i][0]; $('paCorrupt').value = tries[i][1]; } break; }
         catch (e) { if (i === tries.length - 1 || !/same number of pieces/.test(String(e.message || e))) throw e; }
       }
       stat('paStat', switched ? 'done · the first example splits unevenly in this model’s vocabulary, so this one was used' : 'done', 'ok'); mark('paStat'); cond('paStat', PA.d); drawPatch();
@@ -417,6 +420,15 @@ Return only JSON: {"facets": {"<facet name>": ["sentence", ...], ...}}
     Object.entries(f).slice(0, 8).forEach(([k, v]) => { const ok = (v || []).filter((x) => String(x).toLowerCase().includes(word.toLowerCase())).slice(0, 5); if (ok.length >= 2) out[String(k).replace(/_/g, ' ').trim()] = ok; });
     if (Object.keys(out).length < 3) throw new Error('Too few usable sentences came back.'); return { facets: out, cost: r.cost };
   }
+  // The last lit concept is kept (PSI.keep). The sentences Prometheus wrote for it are not in the result, so a kept
+  // concept that used them cannot be knocked out with the same sentences: A.conceptLost says so (ccKO asks to light it again).
+  const KEEP_CC = PSI.keep('anatomy-concept', { inputs: ['ccWord', 'ccTailor'], status: 'ccStat',
+    render: async (d, info) => {
+      if (!d || !d.nodes) return;
+      A.conceptFacets = null; A.conceptLost = !!$('ccTailor').checked && info.restored; A.concept = d; await loadNames();
+      cond('ccStat', d, [{ t: 'no untrained baseline here', title: 'the concept map is not compared with an untrained twin' }]);
+      $('ccOut').classList.remove('hidden'); drawNet(); drawConcept();
+    } });
   $('ccRun').addEventListener('click', async () => {
     const word = $('ccWord').value.trim(); if (!word) return stat('ccStat', 'Type a concept first.', 'warn'); const b = $('ccRun'); b.disabled = true; $('ccSummary').textContent = '';
     try {
@@ -425,8 +437,8 @@ Return only JSON: {"facets": {"<facet name>": ["sentence", ...], ...}}
       if ($('ccTailor').checked && !PSI.state.key) note = 'generic sentences (Prometheus needs an OpenRouter key, set in Settings)';
       else if ($('ccTailor').checked) { stat('ccStat', 'Prometheus is writing sentences about it…', 'busy'); try { const t = await tailored(word); facets = t.facets; note = `sentences written by Prometheus ($${(+t.cost || 0).toFixed(4)})`; } catch (e) { note = `generic sentences (Prometheus: ${PSI.explain(e).text})`; } }
       stat('ccStat', 'reading every neuron at the concept’s words…', 'busy');
-      const d = await call({ action: 'concept', concept: word, facets, bins: A.rec ? A.rec.bins : A.bins });
-      A.conceptFacets = facets;
+      const d = await KEEP_CC.call('anatomy', { action: 'concept', concept: word, facets, bins: A.rec ? A.rec.bins : A.bins });
+      A.conceptFacets = facets; A.conceptLost = false;
       A.concept = d; await loadNames(); stat('ccStat', `${d.sentences} sentences, ${note}, ${d.seconds}s`, 'ok'); mark('ccStat'); cond('ccStat', d, [{ t: 'no untrained baseline here', title: 'the concept map is not compared with an untrained twin' }]);
       $('ccOut').classList.remove('hidden'); drawNet(); drawConcept();
     } catch (e) { err(e); failed('ccStat', 'Lighting up the concept', e); } finally { b.disabled = false; }
@@ -507,7 +519,9 @@ ${JSON.stringify(ev)}`;
   });
 
   $('ccKO').addEventListener('click', async () => {
-    const d = A.concept; if (!d) return stat('ccKOStat', 'Light up a concept first.', 'warn'); const out = $('ccKOOut'); out.textContent = '';
+    const d = A.concept; if (!d) return stat('ccKOStat', 'Light up a concept first.', 'warn');
+    if (A.conceptLost) return stat('ccKOStat', 'This concept map was kept from before, but the sentences Prometheus wrote for it were not: press “Light it up” again, then run this.', 'warn');
+    const out = $('ccKOOut'); out.textContent = '';
     // Its restores between rounds would remove a Tipping-point cut, so the engine refuses while one is in force; say so first.
     if (window.PSIExp && PSIExp.changed()) return stat('ccKOStat', `A Tipping-point cut is in force (${PSIExp.changed()}). Delete what is lit restores the model between rounds, which would remove it. Restore the model in Tipping point first, then run this again.`, 'warn');
     const b = $('ccKO'); b.disabled = true; const rounds = +$('ccRounds').value; stat('ccKOStat', '');
@@ -558,6 +572,9 @@ Return only JSON: [{"facet": "...", "prompt": "...", "answer": "..."}]`;
     const m = String(r.text || '').match(/\[[\s\S]*\]/); if (!m) return { probes: [], cost: r.cost };
     return { probes: JSON.parse(m[0]).filter((x) => x.prompt && x.answer && !/\s/.test(String(x.answer).trim())).slice(0, 10), cost: r.cost };
   }
+  // The last map is kept (PSI.keep); the colour check is a second call and is not kept with it.
+  const KEEP_CN = PSI.keep('anatomy-net', { inputs: ['cnChecks'], status: 'cuStat',
+    render: (d) => { if (!d || !d.nodes) return; A.net = d; A.color = null; cond('cuStat', d, [{ t: 'no untrained baseline here' }]); $('cnOut').classList.remove('hidden'); drawNetMap(); } });
   $('cnRun').addEventListener('click', async () => {
     const word = $('ccWord').value.trim(); if (!word) return stat('cuStat', 'Type a concept in the box above (“concept”) first.', 'warn'); const b = $('cnRun'); b.disabled = true;
     try {
@@ -566,7 +583,7 @@ Return only JSON: [{"facet": "...", "prompt": "...", "answer": "..."}]`;
       else if ($('cnChecks').checked) { stat('cuStat', 'Prometheus is writing fact checks…', 'busy'); try { const d = await drafts(word); probes = d.probes; note = ` · fact checks by Prometheus ($${(+d.cost || 0).toFixed(4)})`; } catch (e) { note = ` · no fact checks (${PSI.explain(e).text})`; } }
       stat('cuStat', 'asking it, and reading where the concept sits among ~200 words…', 'busy');
       const isColor = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'brown', 'black', 'white', 'grey', 'cyan', 'magenta', 'violet', 'crimson', 'scarlet', 'teal', 'navy', 'gold', 'maroon', 'lime', 'turquoise', 'beige', 'olive'].includes(word.toLowerCase());
-      A.net = await call({ action: 'concept_net', concept: word, facets: (A.concept && A.concept.concept === word && A.conceptFacets) || null, probes });
+      A.net = await KEEP_CN.call('anatomy', { action: 'concept_net', concept: word, facets: (A.concept && A.concept.concept === word && A.conceptFacets) || null, probes });
       A.color = isColor ? await call({ action: 'color_geometry', focus: word.toLowerCase() }) : null;
       stat('cuStat', `${A.net.seconds}s${note}`, 'ok'); mark('cuStat'); cond('cuStat', A.net, [{ t: 'no untrained baseline here' }]); $('cnOut').classList.remove('hidden'); drawNetMap();
     } catch (e) { err(e); failed('cuStat', 'Mapping what it understood', e); } finally { b.disabled = false; }
@@ -627,6 +644,19 @@ Return only JSON: [{"facet": "...", "prompt": "...", "answer": "..."}]`;
 
   // ── 4. record and play ──────────────────────────────────────────────────
   PSI.followLens($('anLens'));   // starts as Settings > Think in E-levels says, until changed here
+  // A recording on screen: just made, or kept from before (PSI.keep). A kept one is shown paused at its first step, with
+  // the conditions it was recorded under (the recording does not echo its framing, so a kept one does not claim it).
+  function showRec(rec, lens, restored) {
+    A.rec = rec; A.step = 0; $('anScrub').max = String(A.rec.steps.length - 1); $('anScrub').value = '0';
+    const kv = ((A.rec.pieces.length * A.rec.kv_bytes_per_token) / 1024 / 1024).toFixed(2), rs = $('anRecStat');
+    stat('anRecStat', `${A.rec.prompt_len} tokens read, ${A.rec.steps.length - A.rec.prompt_len + 1} written · ${A.rec.seconds}s · `, 'ok');
+    rs.append('its ', PSI.term('KV cache'), ` holds ${kv} MB by the end`);
+    if (!restored) mark('anRecStat');
+    cond('anRecStat', rec, [...(lens == null ? [] : [{ t: lens ? 'E-level framing on' : 'no E-level framing', frame: lens }]), { t: 'no untrained baseline here' }]);
+    $('anPlayer').classList.remove('hidden'); render();
+  }
+  const KEEP_REC = PSI.keep('anatomy-record', { inputs: ['anPrompt', 'anN', 'anLens'], status: 'anRecStat',
+    render: (rec, info) => { if (rec && rec.steps && rec.steps.length) { stop(); showRec(rec, null, info.restored); } } });
   $('anRecord').addEventListener('click', async () => {
     if (!$('anPrompt').value.trim()) return stat('anRecStat', 'Write a prompt first.', 'warn');
     const b = $('anRecord'); b.disabled = true; stop(); stat('anRecStat', '');
@@ -635,14 +665,10 @@ Return only JSON: [{"facet": "...", "prompt": "...", "answer": "..."}]`;
       const rec = await longCall('anRecord', { text: `recording a forward pass (${n} tokens to write)`, doneText: (x) => `done · ${x.seconds}s` }, async () => {
         if (!A.st) await loadStructure();
         if (!A.st) throw new Error('The model’s structure could not be read, so there is nothing to record into.');
-        return call({ action: 'record', prompt: $('anPrompt').value, n_new: n, lens, think, bins: A.bins });
+        return KEEP_REC.call('anatomy', { action: 'record', prompt: $('anPrompt').value, n_new: n, lens, think, bins: A.bins });
       });
       if (!rec) return;
-      A.rec = rec; A.step = 0; $('anScrub').max = String(A.rec.steps.length - 1); $('anScrub').value = '0';
-      const kv = ((A.rec.pieces.length * A.rec.kv_bytes_per_token) / 1024 / 1024).toFixed(2), rs = $('anRecStat');
-      stat('anRecStat', `${A.rec.prompt_len} tokens read, ${A.rec.steps.length - A.rec.prompt_len + 1} written · ${A.rec.seconds}s · `, 'ok');
-      rs.append('its ', PSI.term('KV cache'), ` holds ${kv} MB by the end`); mark('anRecStat'); cond('anRecStat', rec, [{ t: lens ? 'E-level framing on' : 'no E-level framing', frame: lens }, { t: 'no untrained baseline here' }]);
-      $('anPlayer').classList.remove('hidden'); render(); if (A.zoom) openZoom(A.zoom.layer, A.zoom.bin); play();
+      showRec(rec, lens, false); if (A.zoom) openZoom(A.zoom.layer, A.zoom.bin); play();
     } catch (e) { err(e); failed('anRecStat', 'Recording', e); } finally { b.disabled = false; }
   });
   function render() {
@@ -732,7 +758,7 @@ Return only JSON: [{"facet": "...", "prompt": "...", "answer": "..."}]`;
   // Opening the view reads the structure, which starts the inside-the-model engine: only when that engine is set up.
   // Until then the drawings say what is missing, and the view loads as soon as the engine is ready.
   const visible = () => !$('tab-anatomy').classList.contains('hidden');
-  const open = () => { if (A.st) drawNet(); else if (PSI.state.engine && !A.loading) loadStructure(); else netHint(); if (PA.d) drawPatch(); else patchHint(); if (A.rec) render(); };
+  const open = () => { if (A.st) drawNet(); else if (PSI.state.engine && !A.loading) loadStructure(); else netHint(); if (PA.d) drawPatch(); else patchHint(); if (A.rec) render(); if (A.concept) drawConcept(); if (A.net) drawNetMap(); };   // kept results restored while hidden are sized now
   document.querySelector('#tabs button[data-tab=anatomy]').addEventListener('click', () => setTimeout(open, 0));
   PSI.onState((s) => { if (visible()) { if (s.engine && !A.st && !A.loading && !A.stFailed) loadStructure(); else if (!A.st) netHint(); } });
   netHint(); patchHint();

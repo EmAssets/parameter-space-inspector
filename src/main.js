@@ -173,6 +173,9 @@ handle('embed', async (text, k) => { await tracer.ensure((s) => win && win.webCo
 handle('understand', async (items) => { await tracer.ensure(); return tracer.understand(items); });
 handle('represent', async (text) => { await tracer.ensure(); return tracer.represent(text); });
 handle('vectors', async (args) => { await tracer.ensure(); return tracer.vectors(args || {}); });
+handle('override', async (args) => { if (MEASURE.busy()) throw new Error('A probe is being measured on the GPU; the Override map is free again when it ends.'); await tracer.ensure(); return tracer.override(args || {}); });
+handle('context', async (args) => { if (MEASURE.busy()) throw new Error('A probe is being measured on the GPU; the Context lab is free again when it ends.'); await tracer.ensure(); return tracer.context(args || {}); });
+handle('attractor', async (args) => { if (MEASURE.busy()) throw new Error('A probe is being measured on the GPU; the Attractor lab is free again when it ends.'); await tracer.ensure(); return tracer.attractor(args || {}); });
 // Features (sparse autoencoders): reading through the inside engine, training as its own process (src/sae-api.js).
 const SAE = require('./sae-api.js').createSae({ tracer, engine, config, log: (m) => { remember('sae', m); win && win.webContents.send('psi:log', `[sae] ${m}`); } });
 handle('sae', async (a) => SAE.call(a || {}));
@@ -191,7 +194,32 @@ handle('hf', async (a) => HF.call(a || {}));
 // Prometheus on the user's ChatGPT plan (src/chatgpt.js): sign-in opens in the user's own browser.
 const CHATGPT = require('./chatgpt.js').createChatgpt({ dataDir: config.DATA, secrets: SECRETS, open: (u) => shell.openExternal(u), log: (m) => { remember('chatgpt', m); win && win.webContents.send('psi:log', `[chatgpt] ${m}`); } });
 config.setChatgpt(CHATGPT);
+// The tester model on this computer (src/local-llm.js), kept apart from the model under test: never this engine's port.
+config.setLocal(require('./local-llm.js').createLocal({ settings: () => config.settings, enginePort: () => (engine.proc ? engine.port : null) }));
 handle('chatgpt', async (a) => CHATGPT.call(a || {}));
+// Settings > Help and about: check for, download and install updates (src/update-api.js). Registered outside handle(), so
+// it is not in API: MCP agents and job plans cannot reach it, only the app's main page.
+const UPDATER = require('./update-api.js').createUpdater({ dataDir: config.DATA, log: (m) => { remember('update', m); win && win.webContents.send('psi:log', `[update] ${m}`); },
+  stopEngines: async () => { await engine.stop(); await tracer.stop(); },
+  restart: ({ npm }) => { if (npm) npm(); else app.relaunch(); app.quit(); } });
+// What each view last showed (src/session-api.js): inputs, last result, a call still running. Page-only, like updates.
+// Every result kept as raw data (src/records.js): view runs here, MCP tool calls in createMcp below.
+const RECORDS = require('./records.js').createRecords({ dataDir: config.DATA, settings: () => config.settings, log: (m) => remember('records', m) });
+const SESSION = require('./session-api.js').createSession({ dataDir: config.DATA, api: API, log: (m) => remember('session', m), records: RECORDS });
+ipcMain.handle('psi:session', async (e, a) => {
+  if (String((e.senderFrame && e.senderFrame.url) || '').split('#')[0] !== UI_URL) return { ok: false, error: 'not allowed from this page' };
+  try { return { ok: true, value: await SESSION.call(a || {}) }; } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('psi:update', async (e, a) => {
+  if (String((e.senderFrame && e.senderFrame.url) || '').split('#')[0] !== UI_URL) return { ok: false, error: 'not allowed from this page' };
+  try { return { ok: true, value: await UPDATER.call(a || {}) }; } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+// Measuring an Override-map probe on the inside model (src/measure-api.js): an hour or more on the GPU. Page-only.
+const MEASURE = require('./measure-api.js').createMeasure({ tracer, engine, config, log: (m) => { remember('measure', m); win && win.webContents.send('psi:log', `[measure] ${m}`); } });
+ipcMain.handle('psi:measure', async (e, a) => {
+  if (String((e.senderFrame && e.senderFrame.url) || '').split('#')[0] !== UI_URL) return { ok: false, error: 'not allowed from this page' };
+  try { return { ok: true, value: await MEASURE.call(a || {}) }; } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
 handle('scoreText', async (args) => { await tracer.ensure(); return tracer.scoreText(args || {}); });
 handle('ablate', async (args) => { await tracer.ensure(); return tracer.ablate(args || {}); });
 handle('ckptList', async () => { await tracer.ensure(); return tracer.ckptList(); });
@@ -286,7 +314,7 @@ app.on('before-quit', () => { engine.stop(); });
 
 // The Inspector as an MCP server for the in-app AI helper (and any agent over IPC).
 const { createMcp } = require('./mcp.js');
-const MCP = createMcp({ call: (n, ...a) => API[n](...a), config });
+const MCP = createMcp({ call: (n, ...a) => API[n](...a), config, records: RECORDS });
 handle('mcp', async (rpc) => MCP.handle(rpc, { caller: 'app' }));   // the window's own Prometheus
 
 // The job runner (src/jobs.js): an approved plan runs here, in the main process, so it carries on when the window is

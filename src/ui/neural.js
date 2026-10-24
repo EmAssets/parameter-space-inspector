@@ -73,15 +73,21 @@
   PSI.insideCondParts = condParts;   // Anatomy renders the same conditions
   PSI.followLens($('nnLens'));   // starts as Settings > Think in E-levels says, until changed here
 
+  // The last recording is kept (PSI.keep): a reload or another device shows it again, with the conditions it was
+  // recorded under. The trace server echoes the prompt and framing it recorded, so a kept recording is self-contained.
+  const when = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } };
+  const KEEP = PSI.keep('neural', { inputs: ['nnPrompt', 'nnN', 'nnLens'], status: 'nnStat',
+    render: (t, info) => { if (t && t.tokens && t.tokens.length) load(t, t.prompt != null ? t.prompt : $('nnPrompt').value, !!t.lens, `kept recording from ${when(info.at)}`, true); } });
   $('nnGo').addEventListener('click', async () => {
     const b = $('nnGo'); b.disabled = true; stat('recording… (the first run loads the model into the trace engine)', 'busy');
     try {
       const lens = $('nnLens').checked && (!window.PSIEM || PSIEM.on);
-      load(await psi.trace($('nnPrompt').value, { n_new: +$('nnN').value || 20, lens }), $('nnPrompt').value, lens);
+      load(await KEEP.call('trace', $('nnPrompt').value, { n_new: +$('nnN').value || 20, lens }), $('nnPrompt').value, lens);
     } catch (e) { err(e); stat(`Recording failed: ${PSI.explain(e).text}`, 'error'); } finally { b.disabled = false; }
   });
   // A recording into the view: this view's own, or one an experiment made (`from` names it in the conditions line).
-  function load(t, prompt, lens, from) {
+  // restored: kept from before (PSI.keep), so the engines' state now is not stamped onto it.
+  function load(t, prompt, lens, from, restored) {
     N.raw = Object.assign({}, t, { tokens: t.tokens.slice() }); N.rawPrompt = prompt;   // as recorded, before this view trims it
     // Qwen sometimes re-emits the closing think tag first: it is kept (greyed) in the text, the attention row and the
     // knock-outs' context, so positions stay those the model saw, but the token slider starts after it.
@@ -103,7 +109,7 @@
       { t: lens ? 'E-level framing on' : 'no E-level framing', frame: lens, term: 'E-level framing' }, { t: 'greedy: the likeliest piece each step', term: 'greedy' },
       { t: `recording #${t.recNo}` }, ...(t.perf && t.perf.tps != null ? [{ t: `${t.perf.tps.toFixed(t.perf.tps < 10 ? 1 : 0)} tokens/s recorded`, title: 'Speed while recording every layer (details below the buttons)' }] : []), ...(from ? [{ t: from }] : []),
       { t: 'no untrained baseline here', title: 'Nothing in this view is compared with an untrained twin: a pattern drawn here may come from the architecture as much as from training. The Emergence ladder compares with the twin.' },
-      ...(PSI.changesFor('local').length ? [{ t: 'steering/LoRA: on the local engine only, not here' }] : []),
+      ...(!restored && PSI.changesFor('local').length ? [{ t: 'steering/LoRA: on the local engine only, not here' }] : []),
       ...mism.map((m) => ({ t: `not the GGUF’s shape: ${m}`, warn: true })),
       ...(t.recordedLocally ? [{ t: 'the engine did not echo the prompt: knock-outs re-send the text as it was when recorded', warn: true }] : []),
       ...(t.extras_error ? [{ t: `z-scores and prompt parts unavailable: ${t.extras_error}`, warn: true }] : [])]), 'recorded on');
@@ -359,5 +365,5 @@
   $('koAll').addEventListener('click', () => knockout(null));
 
   // Share the prompt with the Generate tab the first time.
-  document.querySelector('[data-tab=neural]').addEventListener('click', () => { if (!N.trace) { $('nnPrompt').value = $('prompt').value; setTimeout(hint, 0); } status(); });
+  document.querySelector('[data-tab=neural]').addEventListener('click', () => { if (!N.trace) { $('nnPrompt').value = $('prompt').value; setTimeout(hint, 0); } else setTimeout(draw, 0); status(); });   // draw: a kept recording restored while hidden is sized now
 })();

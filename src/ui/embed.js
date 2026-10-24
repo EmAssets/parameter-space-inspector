@@ -13,8 +13,10 @@
 
   const status = (id, text, kind) => PSI.status($(id), text, kind);
   // What a reading came from: the inside engine's own copy of the model, as changed by a Tipping-point cut or not.
-  const cond = (id, extra) => PSI.cond($(id).closest('.row'), [{ t: PSI.state.insideModel || 'the inside engine’s model', title: 'the unpacked weights folder the inside engine reads' },
-    { t: 'inside engine', term: 'inside engine' }, ...PSI.changeParts('inside'), ...(extra || [])], 'read from');
+  // restored: kept from before (PSI.keep), so the inside engine's model and changes now are not claimed for it.
+  const cond = (id, extra, restored) => PSI.cond($(id).closest('.row'), [...(restored ? [{ t: 'kept from an earlier reading', title: 'shown again after a reload or on another device: the model and any changes now may differ from when it was read' }]
+    : [{ t: PSI.state.insideModel || 'the inside engine’s model', title: 'the unpacked weights folder the inside engine reads' }]),
+    { t: 'inside engine', term: 'inside engine' }, ...(restored ? [] : PSI.changeParts('inside')), ...(extra || [])], 'read from');
   // Both parts read the weights through the inside-the-model engine, not the GGUF engine.
   PSI.requires($('embGo'), 'engine'); PSI.requires($('repGo'), 'engine');
 
@@ -37,16 +39,27 @@
   // Until a reading comes back, the headers follow the loaded model's layer count (neutral wording before one is loaded).
   document.addEventListener('psi-model-meta', (e) => { const n = e.detail && e.detail.layers; if (n && !$('repTable').querySelector('tbody tr')) heads(depths([...Array(n).keys()].map((i) => i + 1))); });
 
+  // The last map and the last sentence read are kept (PSI.keep): a reload or another device shows them again. The text
+  // box above belongs to the Tokens view, so the map keeps no input of its own; a kept map is not compared with the
+  // GGUF tokenizer (that would compare against whatever is loaded now).
+  const MAP_PARTS = [{ t: 'the map is a flattening: distances on it are approximate', est: true, title: 'Thousands of dimensions drawn in two; the nearest pieces below are measured in the full space (cosine)' },
+    { t: 'special tokens not added', title: 'The inside engine cuts the text without adding the model’s own start token' }];
+  const KEEP_EMB = PSI.keep('tokens-embed', { status: 'embStat',
+    render: (d, info) => {
+      if (!d || !d.tokens || !d.map) return;
+      M.data = d; M.sel = 0;
+      cond('embGo', [...MAP_PARTS, { t: 'not compared with the GGUF tokenizer (kept from before)' }], info.restored);
+      if (!$('tab-tokens').classList.contains('hidden')) render();   // otherwise drawn when the tab opens (sized then)
+    } });
   $('embGo').addEventListener('click', async () => {
     if (!$('tokText').value.trim()) return status('embStat', 'Type or paste some text in the box above first.', 'warn');
     const b = $('embGo'); b.disabled = true; status('embStat', 'reading the embedding matrix… (starts the inside-the-model engine if needed)', 'busy');
     try {
       const text = $('tokText').value;
-      M.data = await psi.embed(text); M.sel = 0;
+      M.data = await KEEP_EMB.call('embed', text); M.sel = 0;
       const agree = await tokenizersAgree(text, M.data.tokens);
       status('embStat', `${M.data.tokens.length} pieces · each stored as ${M.data.dims.toLocaleString()} numbers · vocabulary of ${M.data.vocab.toLocaleString()} pieces · ${M.data.seconds}s${agree && !agree.same ? ` · ${agree.text}` : ''}`, agree && !agree.same ? 'warn' : 'ok');
-      cond('embGo', [{ t: 'the map is a flattening: distances on it are approximate', est: true, title: 'Thousands of dimensions drawn in two; the nearest pieces below are measured in the full space (cosine)' },
-        { t: 'special tokens not added', title: 'The inside engine cuts the text without adding the model’s own start token' },
+      cond('embGo', [...MAP_PARTS,
         agree ? { t: agree.same ? 'pieces match the GGUF tokenizer above' : 'pieces differ from the GGUF tokenizer above', warn: !agree.same, title: agree.text } : { t: 'not compared with the GGUF tokenizer (no model loaded there)' }]);
       render();
     } catch (e) { err(e); status('embStat', `Reading the embedding matrix failed: ${PSI.explain(e).text}`, 'error'); } finally { b.disabled = false; }
@@ -66,48 +79,51 @@
   }
 
   // A word it has never seen: what each piece becomes after reading the sentence.
+  const KEEP_REP = PSI.keep('tokens-represent', { inputs: ['repText', 'repAll'], status: 'repStat', render: (r, info) => { if (r && r.tokens) showRep(r, info.restored); } });
   $('repGo').addEventListener('click', async () => {
     const b = $('repGo'); b.disabled = true; status('repStat', 'reading…', 'busy');
     try {
-      const r = await psi.represent($('repText').value);
-      const tb = $('repTable').querySelector('tbody'); tb.textContent = '';
-      // The layers the engine read back (e.g. both layers of the 2-layer toy), else the ones in the reply.
-      const Ls = r.layers || Object.keys((r.tokens[0] || {}).by_layer || {}).map(Number).sort((a, b) => a - b), top = Ls[Ls.length - 1];
-      const cols = depths(Ls);
-      const mid = cols.length > 2 ? cols[cols.length - 2] : null;
-      heads(cols);
-      // Which pieces belong to a word the model cannot know: any word of 6+ letters that the
-      // tokenizer had to break into 3+ pieces (real words are usually one or two).
-      const pieces = r.tokens.map((t) => t.piece), words = [];
-      let cur = null;
-      pieces.forEach((p, i) => { if (/^\s/.test(p) || i === 0) { cur = { idx: [i], text: p.trim() }; words.push(cur); } else if (cur) { cur.idx.push(i); cur.text += p.trim(); } });
-      const invented = new Set(words.filter((w) => w.idx.length >= 3 && /^[a-z]{6,}$/i.test(w.text)).flatMap((w) => w.idx));
-      const lastOf = new Set(words.filter((w) => w.idx.length >= 3 && /^[a-z]{6,}$/i.test(w.text)).map((w) => w.idx[w.idx.length - 1]));
-      const keep = (i) => $('repAll').checked || invented.has(i) || /^\s?(stall|bread|market|shop|opens|sells)$/i.test(pieces[i]);
-      let mention = 0; const readings = [];
-      r.tokens.forEach((t, i) => {
-        if (!keep(i)) return;
-        const tr = el('tr'); if (invented.has(i)) tr.className = 'hi';
-        tr.appendChild(el('td', null, show(t.piece) + (lastOf.has(i) ? ` ← mention ${++mention}` : '')));
-        for (const l of cols) {
-          const td = el('td'); const row = t.by_layer[l] || [];
-          if (!row.length) { td.className = 'muted small'; td.textContent = 'not read'; td.title = 'The engine sent nothing for this layer: not measured, not empty'; tr.appendChild(td); continue; }
-          if (row[0][1] < 0.04) td.style.opacity = '0.45';
-          row.slice(0, 4).forEach(([p, v], k) => { const w = el('span', 'w'); if (k === 0) w.appendChild(el('b', null, show(p))); else w.textContent = show(p); w.title = `${(v * 100).toFixed(1)}%`; td.appendChild(w); });
-          tr.appendChild(td);
-        }
-        tb.appendChild(tr);
-        const last = (t.by_layer[String(top)] || [])[0];
-        if (lastOf.has(i)) readings.push(`mention ${mention}: ${last ? `after the whole network it expects “${show(last[0])}” next` : 'the last layer was not read'}` + (mid && (t.by_layer[mid] || [])[0] ? `, at layer ${mid} “${show(t.by_layer[mid][0][0])}”` : ''));
-      });
-      const name = words.find((w) => w.idx.length >= 3 && /^[a-z]{6,}$/i.test(w.text));
-      const letters = r.tokens.length >= 0.8 * [...$('repText').value].length;   // a letter-by-letter model (the toy Llama) has rows only for letters
-      $('repStat').textContent = letters ? `This model reads letter by letter (${r.tokens.length} pieces for ${[...$('repText').value].length} characters): it has a row for no word at all, so every word is built from letters as it reads. ${readings.slice(0, 2).join('; ')}${readings.length ? '. ' : ''}Dim cells: the network has not decided there yet.` : name ? `“${name.text}” is ${name.idx.length} pieces the model has no row for as a word. ${readings.join('; ')}. Dim cells: the network has not decided there yet.` : `${r.tokens.length} pieces read.`;
-      $('repStat').classList.remove('is-busy');
-      cond('repGo', [{ t: 'each cell: the logit lens after that layer, the top 4 guesses', term: 'logit lens' }]);
+      showRep(await KEEP_REP.call('represent', $('repText').value));
     } catch (e) { err(e); status('repStat', `Reading the sentence failed: ${PSI.explain(e).text}`, 'error'); } finally { b.disabled = false; }
   });
-  document.querySelector('#tabs button[data-tab=tokens]').addEventListener('click', () => setTimeout(() => { if (M.data) { drawMap(); drawRow(); } else empty(); }, 0));
+  function showRep(r, restored) {
+    const tb = $('repTable').querySelector('tbody'); tb.textContent = '';
+    // The layers the engine read back (e.g. both layers of the 2-layer toy), else the ones in the reply.
+    const Ls = r.layers || Object.keys((r.tokens[0] || {}).by_layer || {}).map(Number).sort((a, b) => a - b), top = Ls[Ls.length - 1];
+    const cols = depths(Ls);
+    const mid = cols.length > 2 ? cols[cols.length - 2] : null;
+    heads(cols);
+    // Which pieces belong to a word the model cannot know: any word of 6+ letters that the
+    // tokenizer had to break into 3+ pieces (real words are usually one or two).
+    const pieces = r.tokens.map((t) => t.piece), words = [];
+    let cur = null;
+    pieces.forEach((p, i) => { if (/^\s/.test(p) || i === 0) { cur = { idx: [i], text: p.trim() }; words.push(cur); } else if (cur) { cur.idx.push(i); cur.text += p.trim(); } });
+    const invented = new Set(words.filter((w) => w.idx.length >= 3 && /^[a-z]{6,}$/i.test(w.text)).flatMap((w) => w.idx));
+    const lastOf = new Set(words.filter((w) => w.idx.length >= 3 && /^[a-z]{6,}$/i.test(w.text)).map((w) => w.idx[w.idx.length - 1]));
+    const keep = (i) => $('repAll').checked || invented.has(i) || /^\s?(stall|bread|market|shop|opens|sells)$/i.test(pieces[i]);
+    let mention = 0; const readings = [];
+    r.tokens.forEach((t, i) => {
+      if (!keep(i)) return;
+      const tr = el('tr'); if (invented.has(i)) tr.className = 'hi';
+      tr.appendChild(el('td', null, show(t.piece) + (lastOf.has(i) ? ` ← mention ${++mention}` : '')));
+      for (const l of cols) {
+        const td = el('td'); const row = t.by_layer[l] || [];
+        if (!row.length) { td.className = 'muted small'; td.textContent = 'not read'; td.title = 'The engine sent nothing for this layer: not measured, not empty'; tr.appendChild(td); continue; }
+        if (row[0][1] < 0.04) td.style.opacity = '0.45';
+        row.slice(0, 4).forEach(([p, v], k) => { const w = el('span', 'w'); if (k === 0) w.appendChild(el('b', null, show(p))); else w.textContent = show(p); w.title = `${(v * 100).toFixed(1)}%`; td.appendChild(w); });
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+      const last = (t.by_layer[String(top)] || [])[0];
+      if (lastOf.has(i)) readings.push(`mention ${mention}: ${last ? `after the whole network it expects “${show(last[0])}” next` : 'the last layer was not read'}` + (mid && (t.by_layer[mid] || [])[0] ? `, at layer ${mid} “${show(t.by_layer[mid][0][0])}”` : ''));
+    });
+    const name = words.find((w) => w.idx.length >= 3 && /^[a-z]{6,}$/i.test(w.text));
+    const letters = r.tokens.length >= 0.8 * [...$('repText').value].length;   // a letter-by-letter model (the toy Llama) has rows only for letters
+    $('repStat').textContent = letters ? `This model reads letter by letter (${r.tokens.length} pieces for ${[...$('repText').value].length} characters): it has a row for no word at all, so every word is built from letters as it reads. ${readings.slice(0, 2).join('; ')}${readings.length ? '. ' : ''}Dim cells: the network has not decided there yet.` : name ? `“${name.text}” is ${name.idx.length} pieces the model has no row for as a word. ${readings.join('; ')}. Dim cells: the network has not decided there yet.` : `${r.tokens.length} pieces read.`;
+    $('repStat').classList.remove('is-busy');
+    cond('repGo', [{ t: 'each cell: the logit lens after that layer, the top 4 guesses', term: 'logit lens' }], restored);
+  }
+  document.querySelector('#tabs button[data-tab=tokens]').addEventListener('click', () => setTimeout(() => { if (M.data) render(); else empty(); }, 0));   // render: a kept map restored while hidden has no chips yet
 
   // The pieces are buttons for the keyboard too: one Tab stop, arrow keys move, Enter or Space selects.
   function render() {

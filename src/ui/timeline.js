@@ -19,6 +19,12 @@
   const fmtStep = (s) => Number(s).toLocaleString();
   const SHOW = new Set(T.sizes.map((s) => s.id)), SHOWN = new Set();
   let PLACED = [], SEL_EV = null, SEL_P = null, MODELS = [], POLL = null;
+  // Kept views (PSI.keep): the pickers, and the graft, placement and fit card last open, survive a reload. The model
+  // pickers are filled later (the listing), so their kept values wait in WANT until their options exist.
+  const PICKS = ['tlModel', 'tlDevice', 'tlAbs', 'tgHost', 'tgDonor', 'tgMode', 'tgHL', 'tgDL', 'tgWidth', 'tgBand', 'tgFull', 'tgAlign', 'tgDevice', 'fiModel'];
+  let WANT = {};
+  const LATER = [];   // drawing that needs the view on screen (a canvas has no width while it is hidden)
+  const whenShown = (fn) => { if ($('tab-timeline').classList.contains('hidden')) LATER.push(fn); else fn(); };
 
   // ── 1. the chart ──────────────────────────────────────────────────────────
   const X0 = Math.log10(0.1), X1 = Math.log10(400);
@@ -121,13 +127,17 @@
   // ── 2. place a model ─────────────────────────────────────────────────────
   async function loadModels(refresh) {
     try { MODELS = (await psi.timeline({ action: 'models', refresh: !!refresh })).models; } catch (e) { $('tlPlaceStat').textContent = `The model list could not be read: ${PSI.explain(e).text}`; return; }
-    const first = !$('tgHost').value;
-    fillModels($('tlModel'), MODELS); fillModels($('tgHost'), MODELS);
-    if (first) { const d = MODELS.find((m) => /pythia-160m\/step143000/.test(m.name)); if (d) { $('tgHost').value = d.path; $('tlModel').value = d.path; } }
+    const first = !$('tgHost').value, kept = { ...WANT };
+    fillModels($('tlModel'), MODELS); fillModels($('tgHost'), MODELS); fillModels($('fiModel'), MODELS);
+    if (first) {   // the defaults, where nothing was kept from before
+      const d = MODELS.find((m) => /pythia-160m\/step143000/.test(m.name));
+      if (d && $('tgHost').value !== kept.tgHost) $('tgHost').value = d.path;
+      if (d && $('tlModel').value !== kept.tlModel) $('tlModel').value = d.path;
+    }
     await hostChanged();
   }
   function fillModels(sel, list, label) {
-    const was = sel.value; sel.textContent = ''; const groups = new Map();
+    const was = sel.value || WANT[sel.id]; sel.textContent = ''; const groups = new Map();
     list.forEach((m) => { const fam = m.family || (m.name.includes('/') ? m.name.split('/')[0] : 'models'); if (!groups.has(fam)) groups.set(fam, []); groups.get(fam).push(m); });
     for (const [fam, ms] of groups) {
       const og = document.createElement('optgroup'); og.label = fam;
@@ -136,7 +146,7 @@
       });
       sel.appendChild(og);
     }
-    if (was && [...sel.options].some((o) => o.value === was)) sel.value = was;
+    if (was && [...sel.options].some((o) => o.value === was)) { sel.value = was; if (WANT[sel.id] === was) delete WANT[sel.id]; }
   }
   async function refreshPlaced() {
     try { PLACED = (await psi.timeline({ action: 'placements' })).placements; } catch (e) { PLACED = []; }
@@ -161,7 +171,13 @@
   }
   async function nearby(id) {
     SEL_P = id; const box = $('tlNearby'); box.textContent = '';
-    let d; try { d = await psi.timeline({ action: 'get', kind: 'placement', id }); } catch (e) { box.textContent = PSI.explain(e).text; return; }
+    let d; try { d = await KEEP_NEAR.call('timeline', { action: 'get', kind: 'placement', id }); } catch (e) { box.textContent = PSI.explain(e).text; return; }
+    showNearby(d);
+  }
+  // A placement's reading, from a fetch just now or kept from before (PSI.keep).
+  function showNearby(d) {
+    if (!d || !d.result) return;
+    const box = $('tlNearby'); box.textContent = '';
     const n = d.derived && d.derived.nearby, ev = d.result.events;
     box.appendChild(el('p', 'k m-0', `${d.model.name}${d.model.step != null ? ` (its own step ${fmtStep(d.model.step)})` : ''}: measured ${new Date(d.measured_at).toLocaleString()} on the ${d.device}, ${Math.round(d.seconds)} s`));
     if (!n) { box.appendChild(el('p', 'muted small', 'Too few events could be decided to find a near checkpoint.')); return; }
@@ -210,7 +226,8 @@
     const kinds = { 'drop-in': 'drop-in', 'same width': 'same width', stitched: 'stitched', incompatible: 'does not fit' };
     fillModels($('tgDonor'), COMPAT.map((d) => ({ ...d, disabled: d.compat.kind === 'incompatible' })), (m) => `${m.name} · ${kinds[m.compat.kind]}`);
     const h = MODELS.find((m) => m.path === host); $('tgHostInfo').textContent = h ? `${h.layers} layers, ${h.hidden} wide` : '';
-    if (host !== LAST_HOST || (COMPAT.find((d) => d.path === $('tgDonor').value) || {}).compat?.kind === 'incompatible') {
+    if (WANT.tgDonor && COMPAT.some((d) => d.path === WANT.tgDonor && d.compat.kind !== 'incompatible')) { $('tgDonor').value = WANT.tgDonor; delete WANT.tgDonor; LAST_HOST = host; }   // the donor kept from before
+    else if (host !== LAST_HOST || (COMPAT.find((d) => d.path === $('tgDonor').value) || {}).compat?.kind === 'incompatible') {
       LAST_HOST = host;
       // The host's own nearest earlier checkpoint when it has one, else the first that fits.
       const fam = h && h.family ? COMPAT.filter((x) => x.family === h.family && x.step != null && x.step < h.step && x.step > 0).sort((a, b) => b.step - a.step) : [];
@@ -242,7 +259,14 @@
   const f2 = (v, d = 2) => (v == null ? '—' : Number(v).toFixed(d));
   async function openGraft(id) {
     const box = $('tgOut'); box.textContent = ''; let d;
-    try { d = await psi.timeline({ action: 'get', kind: 'graft', id }); } catch (e) { box.textContent = PSI.explain(e).text; return; }
+    try { d = await KEEP_GRAFT.call('timeline', { action: 'get', kind: 'graft', id }); } catch (e) { box.textContent = PSI.explain(e).text; return; }
+    showGraft(d, id);
+  }
+  // A graft's report, from a fetch just now or kept from before (PSI.keep: its id is in the record's meta, if any).
+  function showGraft(d, id) {
+    if (!d || !d.kind) return;
+    id = id || (d.meta && d.meta.id) || d.id;
+    const box = $('tgOut'); box.textContent = '';
     const head = el('p', 'k m-0'); box.appendChild(head);
     if (d.kind === 'graft') {
       head.textContent = `${d.donor} layers ${d.donor_layers[0]}:${d.donor_layers[1]} → ${d.host} layers ${d.host_layers[0]}:${d.host_layers[1]} · ${d.compat.kind}${d.how === 'wrapped' ? (d.maps ? `, maps fitted (R² in ${d.maps.r2_in}, out ${d.maps.r2_out})` : ', identity maps') : ''}`;
@@ -268,7 +292,7 @@
       const bd = el('tbody'); d.donors.forEach((r) => { const tr = el('tr'); tr.append(el('td', null, r.donor), el('td', null, r.error ? 'error' : (r.compat || {}).kind || ''), el('td', null, r.donor_layer ?? '—'), el('td', null, r.error ? r.error : f2(r.fit_text)), el('td', null, f2(r.fit_copying))); bd.appendChild(tr); });
       tb.appendChild(bd); const sc = el('div', 'scroll'); sc.appendChild(tb); box.appendChild(sc); box.appendChild(el('p', 'fx', d.rule));
     }
-    const vb = el('button', 'ghost small', 'Check receipt'); vb.addEventListener('click', async () => { vb.disabled = true; try { const v = await psi.timeline({ action: 'verify', kind: 'graft', id }); vb.textContent = v.ok ? 'receipt checks ✓' : `does not check: ${v.checks.filter((c) => !c.ok).map((c) => c.what).join(', ')}`; vb.title = v.checks.map((c) => `${c.ok ? '✓' : '✗'} ${c.what}: ${c.why}`).join('\n'); } catch (e) { vb.textContent = PSI.explain(e).text; } });
+    const vb = el('button', 'ghost small', 'Check receipt'); vb.hidden = !id; vb.addEventListener('click', async () => { vb.disabled = true; try { const v = await psi.timeline({ action: 'verify', kind: 'graft', id }); vb.textContent = v.ok ? 'receipt checks ✓' : `does not check: ${v.checks.filter((c) => !c.ok).map((c) => c.what).join(', ')}`; vb.title = v.checks.map((c) => `${c.ok ? '✓' : '✗'} ${c.what}: ${c.why}`).join('\n'); } catch (e) { vb.textContent = PSI.explain(e).text; } });
     box.appendChild(el('p', 'fx', `${Math.round(d.seconds)} s on the ${d.device} (${d.dtype}).`)); box.appendChild(vb);
   }
   function heat(cv, d, key) {
@@ -297,18 +321,71 @@
     if (which === 'rank') { $('tgMode').value = 'rank'; mode(); }
   }
 
+  // ── 4. what fits here ────────────────────────────────────────────────────
+  const METHOD = { full: 'every weight, full-precision optimizer', full8: 'every weight, 8-bit optimizer', lora: 'adapters (LoRA), weights in 16 bits', qlora: 'adapters, weights in 4 bits (QLoRA)' };
+  const mark = (v) => (v == null ? '—' : v ? 'yes' : 'no');
+  async function fitCheck() {
+    const box = $('fiOut'), model = $('fiModel').value; if (!model) return;
+    PSI.status($('fiStat'), 'estimating…', 'busy'); let d;
+    try { d = await KEEP_FIT.call('timeline', { action: 'fit', model }); } catch (e) { box.textContent = ''; PSI.status($('fiStat'), PSI.explain(e).text, 'error'); return; }
+    PSI.status($('fiStat'), ''); showFit(d);
+  }
+  // The fit card, from an estimate just now or kept from before (PSI.keep). Measure reads the picker when pressed:
+  // a kept card's picker is restored with it, and changing the picker draws a new card.
+  function showFit(d) {
+    if (!d || !d.methods) return;
+    const box = $('fiOut'); box.textContent = '';
+    const g = d.gpu_now;
+    box.appendChild(el('p', 'small', `${d.model}: ${(d.params / 1e9).toFixed(2)} B weights, ${d.layers} layers, ${d.hidden} wide · ${g ? `${g.name}, ${g.free_gb} of ${g.total_gb} GB free now` : 'no GPU reading'}`));
+    const t = el('table', 'tbl small'), hd = el('tr');
+    ['method', 'memory (estimate)', 'fits now', 'fits idle', 'measured (memory, speed)', ''].forEach((h) => hd.appendChild(el('th', null, h))); t.appendChild(hd);
+    for (const [k, m] of Object.entries(d.methods)) {
+      const tr = el('tr'), ms = m.measured;
+      const got = !ms ? 'not yet' : ms.ok ? `${ms.peak_gb} GB peak, ${ms.tokens_per_s.toLocaleString()} tokens/s (1 M tokens ≈ ${Math.round(1e6 / ms.tokens_per_s / 60)} min)` : ms.out_of_memory ? `out of memory (cap ${ms.cap_gb} GB)` : 'failed';
+      const b = el('button', 'ghost small', 'Measure'); b.title = '1 warm-up and 3 training steps; nothing is saved';
+      b.addEventListener('click', () => { const model = $('fiModel').value; if (model) run(b, $('fiStat'), () => psi.timeline({ action: 'fit_measure', model, method: k, confirm: true }), fitCheck); });
+      tr.append(el('td', null, METHOD[k]), el('td', null, `${m.gb} GB`), el('td', null, mark(m.fits)), el('td', null, mark(m.fits_idle)), el('td', null, got));
+      const td = el('td'); td.appendChild(b); tr.appendChild(td); t.appendChild(tr);
+    }
+    box.appendChild(t);
+    box.appendChild(el('p', 'k mt-18', 'can be grafted into it'));
+    if (!d.partners.length) box.appendChild(el('p', 'small muted', 'None of the models in the listing: no other model has its width or its vocabulary.'));
+    for (const kind of ['drop-in', 'stitched', 'same width']) {   // the most direct first
+      const ps = d.partners.filter((p) => p.kind === kind); if (!ps.length) continue;
+      const series = new Map();   // checkpoints of one run (…/stepN) count as one entry
+      ps.forEach((p) => { const k = p.name.replace(/\/step\d+$/, ''); series.set(k, (series.get(k) || 0) + 1); });
+      const names = [...series].map(([k, n]) => (n > 1 ? `${k} (${n} checkpoints)` : k)).join(', ');
+      const how = { 'drop-in': 'same architecture and attention shape: their layers go in as they are', stitched: 'another width, same vocabulary: maps are fitted each way on the same tokens', 'same width': 'another architecture of the same width: their layers run with their own positions (a fitted map only where the vocabulary is shared)' }[kind];
+      box.appendChild(el('p', 'small', `${kind}: ${names}. ${how}.`));
+    }
+  }
+
+  // ── kept views ──
+  const KEEP_NEAR = PSI.keep('timeline-nearby', { render: (d) => showNearby(d), status: 'tlPlaceStat' });
+  const KEEP_GRAFT = PSI.keep('timeline-graft', { render: (d) => whenShown(() => showGraft(d)), status: 'tgStat' });
+  const KEEP_FIT = PSI.keep('timeline-fit', { render: (d) => showFit(d), status: 'fiStat' });
+
   // ── wiring ──
   function init() {
+    const KEEP = PSI.keep(VIEW, { inputs: PICKS });
+    // The pickers come back once the session answers: plain fields at once (PSI.keep), the model pickers when listed.
+    if (window.psi && psi.session) psi.session({ action: 'get', view: VIEW }).then((s) => {
+      WANT = { ...((s && s.inputs) || {}) }; PICKS.forEach((id) => { if ($(id) && $(id).tagName !== 'SELECT') delete WANT[id]; });
+      for (const id of ['tlModel', 'fiModel']) if (WANT[id] && [...$(id).options].some((o) => o.value === WANT[id])) { $(id).value = WANT[id]; delete WANT[id]; }
+      if (WANT.tgHost && [...$('tgHost').options].some((o) => o.value === WANT.tgHost)) { $('tgHost').value = WANT.tgHost; delete WANT.tgHost; hostChanged(); }
+    }).catch(() => { /* nothing kept */ });
+    KEEP.ready.then(() => mode());
     legend(); draw(); pick(T.events[0].id);
     $('tlPlace').addEventListener('click', place);
     $('tlStop').addEventListener('click', () => psi.timeline({ action: 'cancel' }));
     $('tlRescan').addEventListener('click', () => loadModels(true));
     $('tgHost').addEventListener('change', hostChanged); $('tgDonor').addEventListener('change', donorChanged); $('tgMode').addEventListener('change', mode);
     $('tgRun').addEventListener('click', graftGo);
+    $('fiCheck').addEventListener('click', fitCheck); $('fiModel').addEventListener('change', fitCheck);
     document.querySelectorAll('[data-tg-preset]').forEach((b) => b.addEventListener('click', () => preset(b.dataset.tgPreset)));
     mode();
     let loaded = false;
-    const onShow = () => { if (!loaded) { loaded = true; loadModels(false); refreshPlaced(); history(); psi.timeline({ action: 'status' }).then((s) => { if (s.running) poll(s.job.kind === 'place' ? $('tlPlace') : $('tgRun'), s.job.kind === 'place' ? $('tlPlaceStat') : $('tgStat'), s.job.kind === 'place' ? refreshPlaced : history); }).catch(() => {}); } draw(); if (SEL_EV) pick(SEL_EV); };
+    const onShow = () => { LATER.splice(0).forEach((fn) => fn()); if (!loaded) { loaded = true; loadModels(false); refreshPlaced(); history(); psi.timeline({ action: 'status' }).then((s) => { if (s.running) { const k = s.job.kind; poll(k === 'place' ? $('tlPlace') : k === 'fit' ? $('fiCheck') : $('tgRun'), k === 'place' ? $('tlPlaceStat') : k === 'fit' ? $('fiStat') : $('tgStat'), k === 'place' ? refreshPlaced : k === 'fit' ? fitCheck : history); } }).catch(() => {}); } draw(); if (SEL_EV) pick(SEL_EV); };
     const sec = $('tab-timeline');
     new MutationObserver(() => { if (!sec.classList.contains('hidden')) onShow(); }).observe(sec, { attributes: true, attributeFilter: ['class'] });
     if (!sec.classList.contains('hidden')) onShow();

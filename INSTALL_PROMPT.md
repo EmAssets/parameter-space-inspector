@@ -68,8 +68,9 @@ Offer these, and recommend one from what you found:
      GPU memory (NVIDIA); without that it falls back to the CPU and is slow. Emergence and Timeline also need
      training checkpoints of small Pythia models, a separate download not part of B (the manual explains).
   C. Basic now; just write down what B would need, for later.
-Be honest about the fit: PSI is tested on Windows with a 16 GB NVIDIA card. Linux code paths exist; macOS is
-untested (say so if I am on a Mac). With less than about 6 GB of GPU memory, or none, suggest the smaller model.
+Be honest about the fit: PSI is tested on Windows with a 16 GB NVIDIA card. On an Apple Silicon Mac the browser
+mode (node src/devserver.js) and the basic views are tested; the desktop app and the inside views are not yet tested
+on macOS (say so if I am on a Mac). Linux code paths exist. With less than about 6 GB of GPU memory, or none, suggest the smaller model.
 Then ask me where to put three folders, and suggest defaults on a drive with enough free space (if I opened you
 in an empty folder, suggest that one for PSI):
   where PSI goes (the clone creates a parameter-space-inspector folder inside it: that is the app folder),
@@ -78,7 +79,9 @@ in an empty folder, suggest that one for PSI):
 STEP 3: THE BASICS (only what is missing)
 - git.
 - Node.js 22.12 or newer (the LTS version; Electron needs it): from nodejs.org, or winget install OpenJS.NodeJS.LTS on Windows,
-  brew install node on a Mac, or the NodeSource packages on Linux.
+  brew install node on a Mac, or the NodeSource packages on Linux. Without Homebrew or administrator rights, the
+  nodejs.org .tar.gz (Mac, Linux) or .zip (Windows) unpacked into a folder in my home folder works; use its bin
+  folder for this session only.
 - llama.cpp: on github.com/ggml-org/llama.cpp/releases, open the newest release named b<number> (they are marked
   Pre-release; the one marked Latest may have no downloads), download the one asset that matches this computer
   (a ready-made program; nothing to compile), and unzip it into the llama.cpp folder:
@@ -88,7 +91,9 @@ STEP 3: THE BASICS (only what is missing)
     Linux:              ...-bin-ubuntu-cuda-12.8-x64 (NVIDIA), ...-bin-ubuntu-vulkan-x64 (other GPU), ...-bin-ubuntu-x64 (CPU)
     Mac:                ...-bin-macos-arm64 (Apple silicon) or ...-bin-macos-x64
   Check it runs from inside that folder: .\llama-server.exe --version on Windows (PowerShell), ./llama-server --version
-  elsewhere. Do not add it to PATH; PSI is told where it is.
+  elsewhere. On a Mac, a copy downloaded in a browser is quarantined: macOS blocks it, and it can hang instead of
+  failing. Download with curl (no quarantine), or after unpacking run: xattr -dr com.apple.quarantine <llama.cpp folder>
+  Do not add it to PATH; PSI is told where it is (STEP 6). A llama-server already on the PATH also works.
 
 STEP 4: GET PSI
 In the parent of the app folder:
@@ -124,13 +129,15 @@ every view). PSI starts as a plain inspection tool; Settings > Content turns on 
 content (its E-level lens, the views built on it, character names for models) if I want it. If something fails, read the message with me before trying anything else.
 
 STEP 8: THE INSIDE VIEWS (only for setup B)
-- Python 3.12 (python.org, winget install Python.Python.3.12, brew install python@3.12, or apt).
+- Python 3.12 (python.org, winget install Python.Python.3.12, brew install python@3.12, or apt). A Mac has only
+  python3, Apple's 3.9, which is too old: install 3.12 first.
 - A virtual environment in the app folder, so nothing is installed system-wide:
-    python -m venv .venv      then use .venv's own python and pip for the rest
+    python -m venv .venv      (on a Mac: python3.12 -m venv .venv)  then use .venv's own python and pip for the rest
 - PyTorch for this computer: the command pytorch.org gives for this OS and GPU. For NVIDIA on Windows or
   Linux that is: pip install torch --index-url https://download.pytorch.org/whl/cu124
   An RTX 50-series (Blackwell) card needs the cu128 index instead (cu124 stops at torch 2.6 and does not
   support them): pip install torch --index-url https://download.pytorch.org/whl/cu128
+  On a Mac it is plain pip install torch (Metal, MPS, is included); the CUDA indexes have no Mac builds.
 - If the system drive is short of space, set PIP_CACHE_DIR for these commands to a folder on a roomier drive
   (pip keeps the large PyTorch download in its cache).
 - pip install -r requirements.txt   (it includes accelerate and a transformers version the converter works with)

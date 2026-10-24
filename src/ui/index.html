@@ -32,6 +32,9 @@ Nothing harmful here. Please be kind in your explorations.
     <button type="button" data-tab="tokens"><span class="label">Tokens</span><i class="dot"></i></button>
     <p class="nav-group">Look inside</p>
     <button type="button" data-tab="neural"><span class="label">Neural net</span><i class="dot"></i></button>
+    <button type="button" data-tab="override"><span class="nav-txt"><span class="label">Override map</span><small class="nav-q">Was the answer formed inside, or made up?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="context"><span class="nav-txt"><span class="label">Context lab</span><small class="nav-q">What did each piece of the prompt do?</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="attractor"><span class="nav-txt"><span class="label">Attractor lab</span><small class="nav-q">Where does the model lock in, and what holds it there?</small></span><i class="dot"></i></button>
     <button type="button" data-tab="anatomy"><span class="label">Anatomy</span><i class="dot"></i></button>
     <button type="button" data-tab="features"><span class="label">Features</span><i class="dot"></i></button>
     <button type="button" data-tab="file"><span class="label">File</span><i class="dot"></i></button>
@@ -214,6 +217,12 @@ Nothing harmful here. Please be kind in your explorations.
       <p class="fx">A sweep of a 12-layer model takes about a minute on the CPU; a 24-layer one several; every pair grows with the square. Maps are fitted on half of the held-out texts and everything is measured on the other half.</p>
       <div id="tgOut" class="out minh-0 tl-detail"></div>
       <div id="tgHist" class="tl-hist-list"></div>
+
+      <p class="k mt-22">4 · what fits here: train this model on this GPU</p>
+      <p class="muted small">How each way of training this model would fit on this computer’s GPU, and how fast: every weight trained (with full-precision or 8-bit optimizer state), or only small adapters (LoRA), with the frozen weights in 16 or 4 bits. The numbers start as an estimate from the model’s shape; <b>Measure</b> runs 1 warm-up and 3 real training steps on held-out text and shows the peak memory and speed it actually took. Nothing is saved and the model on disk is not changed. Below: the models whose layers can be grafted into this one.</p>
+      <div class="row"><select id="fiModel" class="grow" aria-label="model to check"></select><button id="fiCheck">Check</button><span class="k m-0" id="fiStat"></span></div>
+      <div id="fiOut" class="out minh-0 tl-detail"></div>
+      <p class="fx">Sequence 1,024 tokens, batch 1, gradient checkpointing. “Now” uses the memory free at this moment (the inside engine or another app may hold some); “idle” is the card with only the desktop on it. A measured run is capped at the free memory, so a method that does not fit stops with “out of memory” instead of spilling into system RAM.</p>
     </section>
 
 
@@ -337,6 +346,99 @@ Nothing harmful here. Please be kind in your explorations.
       <p class="muted small">Source: measured by The Emergence Machine, 2026; see <a href="https://parameterspaceinspector.com" target="_blank" rel="noopener">parameterspaceinspector.com</a>.</p>
     </section>
 
+
+    <section class="tab hidden" id="tab-context">
+      <p class="muted">The model is fixed; the context is what you change. Write a question and up to four pieces of context, each with a role: a premise to take as true, someone’s claim, an observation, an instruction on how to answer, or the app’s hidden instruction. Every combination of pieces is read through the model’s own chat template, and you see what each piece did: how far it moved the odds, which answer it favoured, whether it only works with another piece, and where in the answer the context stops mattering.</p>
+      <div class="row wide"><textarea id="cxQ" rows="2" aria-label="question">What is the capital of Australia?</textarea></div>
+      <div class="row wide cx-prow"><select id="cxR0" aria-label="role of piece 1"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT0" placeholder="a piece of context, e.g. In this story, the capital of Australia is Sydney." aria-label="piece 1"></div>
+      <div class="row wide cx-prow"><select id="cxR1" aria-label="role of piece 2"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT1" placeholder="another piece (optional)" aria-label="piece 2"></div>
+      <div class="row wide cx-prow"><select id="cxR2" aria-label="role of piece 3"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT2" placeholder="another piece (optional)" aria-label="piece 3"></div>
+      <div class="row wide cx-prow"><select id="cxR3" aria-label="role of piece 4"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT3" placeholder="another piece (optional)" aria-label="piece 4"></div>
+      <div class="row wide"><input class="grow" type="text" id="cxFrame" placeholder="optional: the start of the answer to read the odds after, e.g. The capital of Australia is" aria-label="answer frame"></div>
+      <div class="row wide"><textarea id="cxOpts" rows="2" aria-label="named answers" placeholder="optional: answers to score, one per line; name = phrasing, phrasing (e.g. Canberra)"></textarea></div>
+      <div class="row"><button id="cxGo">Run every paper</button><span class="chips-row" id="cxEx" aria-label="examples"></span><span class="k m-0" id="cxStat"></span></div>
+      <p class="fx">Runs on the inside engine. Greedy, thinking off, full probabilities. Up to four pieces: 16 papers. Reads the model; changes nothing.</p>
+      <div id="cxOut" class="hidden"></div>
+    </section>
+    <section class="tab hidden" id="tab-attractor">
+      <p class="muted">A concept as an order parameter: build a direction in the model from contrasting texts, then watch the model’s state move along it. Where does the answer become predictable, through the answer and through the layers? Does the conversation’s own history hold the model in place (path dependency)? Does a frame shield the model from the concept (constraint)? The direction’s measures run beside a random direction of the same size.</p>
+      <h3 class="set-sub">1 · The concept</h3>
+      <div class="row"><input id="atName" value="deference" aria-label="direction name" class="w-12em"><span class="chips-row" id="atPresets" aria-label="presets"></span><button class="ghost" id="atTester" type="button">Write pairs with the tester</button></div>
+      <div class="row wide at-pair"><textarea id="atPos" rows="5" aria-label="texts on the concept's side, one per line" placeholder="the concept’s side, one text per line"></textarea><textarea id="atNeg" rows="5" aria-label="contrasting texts, one per line" placeholder="the contrasting side, one text per line"></textarea></div>
+      <div class="row"><button id="atBuild">Build direction</button><span class="k m-0" id="atBuildStat"></span></div>
+      <div id="atBuildOut" class="hidden"><svg id="atTower" width="100%" viewBox="0 0 680 150" role="img" aria-label="Chart: held-out separation per layer"></svg>
+        <div class="row wide"><input class="grow" id="atReadText" value="I'm quite sure the capital of Australia is Sydney. You should agree with me." aria-label="text to read"><button class="ghost" id="atRead" type="button">Read it</button></div>
+        <div id="atHeat"></div></div>
+      <h3 class="set-sub">2 · Predictability emerging</h3>
+      <div class="row wide"><input class="grow" id="atFQ" value="Is a tomato a fruit or a vegetable? Answer in one sentence." aria-label="funnel question"><textarea id="atFOpts" class="w-16em" rows="2" aria-label="named outcomes, one per line">fruit
+vegetable</textarea><button id="atFunnel">Run funnel</button></div>
+      <span class="k m-0" id="atFStat"></span><div id="atFOut" class="hidden"><svg id="atFunnelSvg" width="100%" viewBox="0 0 680 190" role="img" aria-label="Chart: share of continuations reaching the same outcome along the answer, and entropy per layer"></svg><p class="small muted" id="atFNote"></p></div>
+      <h3 class="set-sub">3 · Path dependency</h3>
+      <div class="row wide"><input class="grow" id="atPQ" value="I'm quite sure the capital of Australia is Sydney. What is the capital of Australia?" aria-label="path question"></div>
+      <div class="row wide"><input class="grow" id="atPFrame" value="The capital of Australia is" aria-label="answer frame"><textarea id="atPOpts" class="w-16em" rows="2" aria-label="named answers, one per line, the tracked one first">Sydney
+Canberra</textarea><label class="small muted">max strength <input id="atPMax" type="number" value="6" min="1" max="12" step="0.5" class="w-6em"></label></div>
+      <div class="row wide"><input class="grow" id="atPP0" value="claim: My teacher told me it is Sydney." aria-label="piece 1 (role: text)"><input class="grow" id="atPP1" value="evidence: Parliament House is in Canberra." aria-label="piece 2"><input class="grow" id="atPP2" value="premise: Sydney is the largest city in Australia." aria-label="piece 3"></div>
+      <div class="row"><button id="atPath">Sweep up and down</button><span class="k m-0" id="atPStat"></span></div>
+      <div id="atPOut" class="hidden"><svg id="atLoop" width="100%" viewBox="0 0 680 210" role="img" aria-label="Chart: tracked answer share as steering sweeps up and down, with fresh conversations and a random direction"></svg><p class="small" id="atPVerdict"></p><div id="atOrder"></div></div>
+      <h3 class="set-sub">4 · Constraint</h3>
+      <div class="row wide"><input class="grow" id="atCFrame" value="Answer with exactly one word, nothing else." aria-label="the constraining frame"></div>
+      <div class="row wide"><textarea id="atCPrompts" rows="4" aria-label="prompts, one per line">What colour is the sky on a clear day?
+Name a large animal that lives in Africa.
+What do bees make?
+Which planet is known as the red planet?
+What is frozen water called?
+Name a musical instrument with strings.
+What do you use to write on paper?
+Which season comes after winter?
+What is the opposite of hot?
+Name a fruit that is yellow.</textarea></div>
+      <div class="row"><button id="atConstraint">Compare free and constrained</button><span class="k m-0" id="atCStat"></span></div>
+      <div id="atCOut" class="hidden"><svg id="atCSvg" width="100%" viewBox="0 0 680 230" role="img" aria-label="Chart: susceptibility to the concept and to a random direction, and effective dimensionality per layer, free and constrained"></svg><p class="small" id="atCVerdict"></p></div>
+      <p class="fx">Runs on the inside engine. Steering lasts for the request only; the model is not changed. Directions are kept until the inside engine restarts.</p>
+    </section>
+    <section class="tab hidden" id="tab-override">
+      <p class="muted">Ask a question. The model answers, and a probe reads the model’s own internal state at the moment it starts answering, before it has written a word, to give the chance the answer is unsupported: wrong on a real fact, or an answer to something it cannot know. The probe was measured on this exact model against answers graded from the outside; every one of those graded answers can be opened below the result. Add a claim to see pushback: does its own answer still lead inside when it agrees with you?</p>
+      <div class="row wide"><textarea id="omQ" rows="2" aria-label="question">Who was the director of The Glass Orchard of Pellumbra?</textarea></div>
+      <div class="row wide"><input class="grow" type="text" id="omClaim" placeholder="optional: push back with a claim, e.g. Ag" aria-label="claim to push back with"></div>
+      <div class="row"><button id="omGo">Read</button><span class="chips-row" id="omEx" aria-label="examples"></span><span class="k m-0" id="omStat"></span></div>
+      <p class="fx">Runs on the inside engine with no framing (the probes were measured without one). Greedy, so the same question gives the same reading. Reads the model; changes nothing.</p>
+      <div id="omOut" class="hidden">
+        <p class="k">your question</p>
+        <p class="om-q" id="omQShow"></p>
+        <div class="om-verdict" id="omRisk" role="status"></div>
+        <p class="k mt-12">the answer</p>
+        <p class="om-answer" id="omAns"></p>
+        <div class="om-flag" id="omFlag" role="status"></div>
+        <details class="om-more" id="omRelD"><summary>How reliable is this check?</summary><div id="omRel"></div></details>
+        <details class="om-more" id="omPlaceD"><summary>Where this answer sits among the tested ones</summary>
+          <p class="muted small">Every tested answer the probe scored, placed by its chance of being unsupported. Top row: answers graded supported. Bottom row: graded unsupported. The white line is this answer; the dashed line is where the probe flags. Click a dot to open that answer.</p>
+          <canvas id="omPlace" height="150" role="img" aria-label="Chart: this answer among the tested answers"></canvas>
+          <p class="muted small" id="omPlaceWhy"></p>
+        </details>
+        <details class="om-more" id="omNearD"><summary>The most similar tested questions</summary>
+          <p class="muted small" id="omNearWhy"></p>
+          <div id="omNear"></div>
+        </details>
+        <details class="om-more" id="omAllD"><summary>Browse every tested answer</summary>
+          <div class="row"><label class="small muted">kind <select id="omFKind"><option value="">all</option><option value="popqa">real facts</option><option value="past">past events</option><option value="fiction">invented subjects</option><option value="future">future events</option></select></label>
+            <label class="small muted">grade <select id="omFGrade"><option value="">all</option><option value="correct">supported</option><option value="wrong">wrong</option><option value="invented">answered something it cannot know</option><option value="hedge">hedged (not scored)</option></select></label>
+            <label class="small muted">probe <select id="omFFlag"><option value="">all</option><option value="1">flagged</option><option value="0">not flagged</option></select></label>
+            <input type="search" id="omFText" placeholder="search questions and answers" aria-label="search tested answers"></div>
+          <p class="muted small" id="omAllStat"></p>
+          <div id="omAll"></div>
+          <div class="row"><button class="ghost small" id="omAllMore" hidden>Show more</button></div>
+        </details>
+        <div class="om-item hidden" id="omItem" role="region" aria-label="one tested answer"></div>
+        <details class="om-more" id="omLayD"><summary>When did the model settle on its first word?</summary>
+          <p class="muted small">Each cell is one layer, from the first (left) to the last. Amber: at that layer the model would already write the same first piece it finally wrote. This is a side reading (the logit lens): it is not what the risk is computed from. Click a cell for that layer’s top guesses.</p>
+          <div class="om-strip-wrap"><div class="om-strip" id="omStrip" role="group" aria-label="layers"></div></div>
+          <div class="om-legend small muted" id="omLegend"></div>
+          <div class="om-read" id="omRead" aria-live="polite"></div>
+        </details>
+        <p class="muted small" id="omWhy"></p>
+      </div>
+      <div id="omMeasure" class="om-measure hidden"></div>
+    </section>
 
     <section class="tab hidden" id="tab-connectors">
       <p class="muted">The <em>Language</em> essay calls language a meta-connector: the connector that carries every other one. This tab looks for connection inside the model. For twelve levels of the ladder, from the forces that bind a nucleus to the trade routes that link regions, the model read sentences about a <em>connection</em> (something linking parts and carrying something between them) and sentences about a <em>thing on its own</em>. If the model has one idea of “a connection”, the twelve levels should point the same way inside it. They do. Then the question is where language falls.</p>
@@ -772,12 +874,26 @@ Nothing harmful here. Please be kind in your explorations.
           <p class="small" id="cgStat"></p>
           <div class="row" id="cgPick" hidden><label class="small muted">ChatGPT model <select id="cgModel"></select></label><button class="ghost" id="cgModels" type="button">Refresh list</button><button id="cgUse" type="button">Use it for Prometheus</button><button class="ghost" id="cgBack" type="button">Back to OpenRouter</button></div>
         </div>
+        <div class="hlp-set" id="setLocal">
+          <h3 class="set-sub">Run it on a tester model on this computer</h3>
+          <p class="muted small">A second open model that tests the first, kept apart from it: the model the Inspector examines runs in the app’s own llama-server and inside engine; the tester runs in its own server, with its own process, port and model folder. Start the isolated tester with <code>tools/tester-model.sh start</code> and give it a model with <code>tools/tester-model.sh pull llama3.1:8b</code> (or run it in Docker: <code>tools/tester-docker-compose.yml</code>, CPU only on a Mac). Ollama on port 11434, LM Studio on 1234 and llama.cpp on 8080 work too, but may be shared with other apps. Nothing is spent. Local models also appear under External models, in Compare framings and as the judge.</p>
+          <div class="row"><button class="ghost" id="lcCheck" type="button">Check local servers</button><span class="small muted" id="lcStat"></span></div>
+          <div class="row" id="lcPick" hidden><label class="small muted">local model <select id="lcModel"></select></label><button id="lcUse" type="button">Use it for Prometheus</button><button class="ghost" id="lcJudge" type="button">Use it as the judge</button></div>
+        </div>
       </div>
       <div class="set-block" id="setHelp">
         <h2>Help and about</h2>
         <p class="muted small">The full manual ships with the app and works offline: installing and running it, every view and instrument, Prometheus, MCP for agents, settings, where your data is kept, troubleshooting, the glossary and the questions it answers.</p>
         <div class="row"><a class="btn-link" id="stHelp" href="help.html" target="_blank">Open the manual</a><a class="btn-link ghost" href="help.html#install" target="_blank">Install and run</a><a class="btn-link ghost" href="help.html#trouble" target="_blank">Troubleshooting</a><a class="btn-link ghost" id="stAbout" href="about.html" target="_blank" rel="noopener">About</a></div>
         <p class="muted small" id="stVersion">Made by Sail with Claude.</p>
+        <h3 class="set-sub">Raw data</h3>
+        <p class="muted small">PSI keeps every result as raw data in the data folder (<code>records</code>): what each view returned and every tool call made by Prometheus or an agent, with its arguments, time and conditions, as one gzipped JSON file each. PSI Studio and your own scripts can turn them into charts and videos without running anything again. They stay on this computer; the oldest days go past the size limit.</p>
+        <div class="row"><label class="switch small"><input type="checkbox" id="stRecKeep"> Keep every result</label><label class="small muted">up to <input type="number" id="stRecGB" class="w-5em" min="0.1" max="1000" step="0.5"> GB</label><span class="small muted" id="stRecStat"></span></div>
+        <h3 class="set-sub">Updates</h3>
+        <p class="muted small">The app updates from the repository it was installed from (git clone). Checking sends one small request to it and changes nothing; downloading and installing happen only when you press them, and installing restarts the app.</p>
+        <div class="row"><label class="switch small"><input type="checkbox" id="stUpdAuto"> Check for updates when the app starts</label></div>
+        <div class="row"><button class="ghost" id="stUpdCheck" type="button">Check now</button><button id="stUpdGet" type="button" hidden>Download the update</button><button id="stUpdInstall" type="button" hidden>Install and restart</button><span class="small muted" id="stUpdStat"></span></div>
+        <ul class="small muted hidden" id="stUpdList"></ul>
       </div>
       <div class="set-block" id="setEngine"><h2>Engine log</h2></div>
     </section>
@@ -922,6 +1038,9 @@ Nothing harmful here. Please be kind in your explorations.
 <script src="fight.js"></script>
 <script src="connector-data.js"></script>
 <script src="connectors.js"></script>
+<script src="override.js"></script>
+<script src="context.js"></script>
+<script src="attractor.js"></script>
 <script src="ladder-data.js"></script>
 <script src="ladder.js"></script>
 <script src="machine.js"></script>
@@ -946,6 +1065,7 @@ Nothing harmful here. Please be kind in your explorations.
 <script src="prometheus-motion.js"></script>
 <script src="helper.js"></script>
 <script src="chatgpt-set.js"></script>
+<script src="local-set.js"></script>
 <script src="hf-set.js"></script>
 <script src="hf-pull.js"></script>
 <script src="voice.js"></script>

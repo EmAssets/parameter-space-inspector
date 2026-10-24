@@ -125,6 +125,9 @@ class Checkpoints:
         if self.model is not None:
             del self.model; self.model = None; devices.empty_cache(self.device)
         path = os.path.join(self.root, f"step{step}")
+        # Without this, a missing folder reads to transformers as a Hugging Face model id ("step1000") and fails as one.
+        if not self.root: raise ValueError("no checkpoints folder set (Settings, or PSI_CHECKPOINTS)")
+        if not os.path.isdir(path): raise ValueError(f"no checkpoint for step {step} in {self.root}" + (f" (steps on disk: {', '.join(map(str, self.steps[:12]))}{'…' if len(self.steps) > 12 else ''})" if self.steps else ""))
         self.tok = AutoTokenizer.from_pretrained(path)
         self.model = AutoModelForCausalLM.from_pretrained(path, dtype=torch.float32, attn_implementation="eager").to(self.device).eval()
         self.step = step

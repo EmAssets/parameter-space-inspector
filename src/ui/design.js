@@ -231,7 +231,7 @@
       const del = el('button', 'ghost dz-hdel', 'Delete'); del.type = 'button'; if (running) del.disabled = true;
       del.addEventListener('click', async () => {   // two steps: the first press asks, the second (within 4 s) deletes
         if (!del.dataset.sure) { del.dataset.sure = '1'; del.textContent = 'Delete for good?'; setTimeout(() => { delete del.dataset.sure; del.textContent = 'Delete'; }, 4000); return; }
-        try { await psi.experiments({ action: 'delete', id: x.id }); if (REC && REC.id === x.id) REC = null; listHistory(); } catch (e) { PSI.err(e); }
+        try { await psi.experiments({ action: 'delete', id: x.id }); if (REC && REC.id === x.id) { REC = null; keepOpen(''); } listHistory(); } catch (e) { PSI.err(e); }
       });
       r.append(open, meta, ...ctl, del); list.appendChild(r);
     });
@@ -239,7 +239,7 @@
 
   // ── the plan card ────────────────────────────────────────────────────────
   function showPlan(plan, fromPrometheus, fromHistory) {
-    PLAN = plan; planBox.textContent = ''; runBox.textContent = ''; if (!fromHistory) { REC = null; resBox.textContent = ''; actBox.hidden = true; }
+    PLAN = plan; planBox.textContent = ''; runBox.textContent = ''; if (!fromHistory) { REC = null; keepOpen(''); resBox.textContent = ''; actBox.hidden = true; }
     planBox.appendChild(el('p', 'k', fromPrometheus ? 'the plan Prometheus proposes · nothing runs until you press Run' : 'the plan · nothing runs until you press Run'));
     const card = el('div', 'out minh-0 dz-plan');
     card.appendChild(el('p', 'dz-title', plan.title));
@@ -288,7 +288,7 @@
       runBox.textContent = ''; const p = el('p', 'small dz-live'); p.id = 'dzFollow';
       p.textContent = j.status === 'queued' && j.done === 0 ? 'Sent to the job runner: it runs in the app, so you can close this screen. This page follows it.' : `Sent to the job runner with ${j.done} of ${j.n} done.`;
       runBox.appendChild(p); ['dzRun', 'dzRunBg'].forEach((b) => { if ($(b)) $(b).disabled = true; });
-      FOLLOW = j.record; REC = null; follow(); listHistory();
+      FOLLOW = j.record; REC = null; keepOpen(j.record); follow(); listHistory();
     } catch (e) { PSI.status(st, PSI.explain(e).text, 'error'); throw e; }
   }
   async function start(shown) {
@@ -475,13 +475,20 @@
   // The name is a question, like a chat title: the plan's title when it is one, else one made from the plan.
   const nameFor = C.nameFor, slim = C.slim;
   let REC = null;   // the record of what is shown now: {id, record}
+  // Kept view (PSI.keep): the id of the experiment shown (or followed) is kept with the chat draft, so a reload, a phone
+  // dropping the tab or another screen opens it again from the history. Opening only reads the record: nothing runs.
+  // A run going on in this page itself stops with the page; one sent to the job runner carries on and is followed again.
+  function keepOpen(id) {
+    const n = $('dzOpenId'); if (!n || n.value === String(id || '')) return;
+    n.value = String(id || ''); n.dispatchEvent(new Event('change'));
+  }
   // While a run lasts, its record is saved as “running · i of n” with its activity, every few seconds, so another
   // screen (a phone, a second window) sees it in the history and can follow it. Saves are queued, never overlapping.
   let SAVING = Promise.resolve(), liveAt = 0;
   function saveLive(plan, done, n, force) {
     if (!force && Date.now() - liveAt < 3000) return SAVING; liveAt = Date.now();
     const record = { name: nameFor(plan), at: (REC && REC.record.at) || new Date().toISOString(), updated: new Date().toISOString(), status: `running · ${done} of ${n}`, live: true, plan, runs: [], activity: actData() };
-    SAVING = SAVING.then(() => psi.experiments({ action: 'save', id: REC && REC.id, record }).then((r) => { REC = { id: r.id, record }; listHistory(); }).catch(() => { /* the final save reports a failure */ }));
+    SAVING = SAVING.then(() => psi.experiments({ action: 'save', id: REC && REC.id, record }).then((r) => { REC = { id: r.id, record }; keepOpen(r.id); listHistory(); }).catch(() => { /* the final save reports a failure */ }));
     return SAVING;
   }
   async function saveRecord(R, runs, reading) {
@@ -490,7 +497,7 @@
     const record = { name: nameFor(R.plan), at: (REC && REC.record.at) || new Date().toISOString(), status: R.partial ? 'stopped early' : 'ran', plan: R.plan, edited: R.edited, partial: !!R.partial,
       tip: R.tip || null, summary: summaryFor(R), runs: slim(runs.map((x) => ({ item: x.item, t: x.t }))), reading: reading != null ? reading : (REC && REC.record.reading) || null, activity: actData(), updated: new Date().toISOString(),
       analyses: (REC && REC.record.analyses) || [], ...(REC && REC.record.job ? { job: REC.record.job, measured: true } : {}) };
-    try { const r = await psi.experiments({ action: 'save', id: REC && REC.id, record }); REC = { id: r.id, record }; sv.end(true, `saved as “${record.name}”`); listHistory(); }
+    try { const r = await psi.experiments({ action: 'save', id: REC && REC.id, record }); REC = { id: r.id, record }; keepOpen(r.id); sv.end(true, `saved as “${record.name}”`); listHistory(); }
     catch (e) { sv.end(false, PSI.explain(e).text); PSI.err(e, { text: `The experiment ran but was not saved to the history: ${PSI.explain(e).text}` }); }
   }
   let FOLLOW = null;   // the id of a running experiment this screen is following
@@ -511,20 +518,20 @@
       const rec = await psi.experiments({ action: 'get', id }); const plan = rec.plan, runs = rec.runs || [];
       if (rec.live) {   // still running somewhere (another screen or the job runner): follow it
         if (RUNNING) { PSI.notice('This screen is running its own experiment; open the other one when it finishes.'); return; }
-        FOLLOW = id; REC = null; LAST = null; showPlan(plan, false, true); resBox.textContent = ''; runBox.textContent = '';
+        FOLLOW = id; REC = null; LAST = null; keepOpen(id); showPlan(plan, false, true); resBox.textContent = ''; runBox.textContent = '';
         const p = el('p', 'small dz-live'); p.id = 'dzFollow'; runBox.appendChild(p); ['dzRun', 'dzRunBg'].forEach((b) => { if ($(b)) $(b).disabled = true; });
         follow(); setTimeout(() => actBox.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); return;
       }
       FOLLOW = null;
       if (runs.length < 2) {   // ended with fewer than two results: nothing to measure
-        REC = { id, record: rec }; showPlan(plan, false, true); runBox.textContent = ''; resBox.textContent = ''; actShow(rec.activity);
+        REC = { id, record: rec }; keepOpen(id); showPlan(plan, false, true); runBox.textContent = ''; resBox.textContent = ''; actShow(rec.activity);
         runBox.appendChild(el('p', 'small muted', `${rec.status || 'ended'}: ${runs.length} result${runs.length === 1 ? '' : 's'}, nothing to compare.`));
         if (JOBPLAN && JOBPLAN.record === id) { if (JOBPLAN.prometheus && PENDING) settle({ status: rec.status, recorded: runs.length }); JOBPLAN = null; }
         return;
       }
       const R = (TOOLS[plan.instrument] ? measureTool : plan.instrument === 'read' ? measureRead : measure)(plan, runs, rec.edited || [], !!rec.partial); R.runs = runs;
       if (rec.tip) R.tip = rec.tip;
-      REC = { id, record: rec }; LAST = R; showPlan(plan, false, true); runBox.textContent = '';
+      REC = { id, record: rec }; LAST = R; keepOpen(id); showPlan(plan, false, true); runBox.textContent = '';
       runBox.appendChild(el('p', 'small muted dz-noprint', `From the history: run on ${new Date(rec.at).toLocaleString()}. The numbers are recomputed from the saved data.`));
       render(R); actShow(rec.activity);
       if (rec.job && rec.measured === false && runs.length >= 2) {   // a job's results, measured here for the first time: keep the summary with the record
@@ -1143,4 +1150,12 @@
     _test: { measure, summaryFor, scriptOf, EXAMPLE, TOOLS, runTool, measureTool },
   };
   renderIntro();
+  if (PSI.keep) {
+    const openId = el('input'); openId.type = 'hidden'; openId.id = 'dzOpenId'; sec.appendChild(openId);
+    PSI.keep('design', { inputs: ['dzChat', 'dzOpenId'] }).ready.then(() => {
+      const id = openId.value; if (!id) return;
+      // still in the history (it may have been deleted on another screen)? then open it, unless something else is shown by now
+      psi.experiments({ action: 'list' }).then((idx) => { if (!idx.some((x) => x.id === id)) { keepOpen(''); return; } if (!REC && !FOLLOW && !RUNNING && !PLAN) openRecord(id); }).catch(() => { /* the history says why */ });
+    });
+  }
 })();

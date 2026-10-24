@@ -35,6 +35,9 @@ import fight as fight_mod
 import connector as connector_mod
 import anatomy as anatomy_mod
 import sae as sae_mod
+import override as override_mod
+import context_lab as context_mod
+import attractor_lab as attractor_mod
 
 LENS = ("Think through the Emergence Machine's E-levels, the fifteen floors of reality: E0 fields, E1 particles, E2 nuclei, E3 chemistry, "
         "E4 information-carrying molecules, E5 cells, E6 organisms, E7 ecosystems, E8 minds, E9 cultures, E10 institutions, E11 organizations, "
@@ -68,7 +71,7 @@ def _readable(path):
                          "and this model has many experts there. The answering engine runs it (Generate, Read, Compare); Neural net, Anatomy and the experiments cannot.")
     if mt == "lfm2":
         raise SystemExit(f"{os.path.basename(path.rstrip('/'))} has hybrid convolution layers ({mt}) that the inside engine does not read. The answering engine runs it.")
-LESION = None; MODEL_PATH = None; SENSE = None; FIGHT = None; CONN = None; ANAT = None
+LESION = None; MODEL_PATH = None; SENSE = None; FIGHT = None; CONN = None; ANAT = None; OVM = None; CTX = None; ATT = None
 SAEB = None   # the sparse autoencoders of the loaded model (src/sae.py), opened on first use
 CKPT = None   # training checkpoints of a small recorded model (Pythia), loaded on demand
 
@@ -201,6 +204,8 @@ class Tracer:
         self.L = self.model.config.num_hidden_layers
         self.model_dir = os.path.abspath(path)
         self.weights_hash, self.weights_hash_of = _weights_hash(path)
+        import weights_fp   # a content fingerprint: the hash above cannot tell a fine-tune from its original
+        self.weights_fp, self.weights_fp_of = weights_fp.fingerprint(path)
         tmpl = getattr(self.tok, "chat_template", None) or ""
         self.no_think_supported = isinstance(tmpl, str) and ("/no_think" in tmpl or "enable_thinking" in tmpl)
         self.no_think_appended = None   # per request: whether the chat prompt got /no_think (reset by the handler)
@@ -226,8 +231,9 @@ class Tracer:
         self.map_ids = torch.randperm(min(40000, n), generator=g)[:6000].to(E.device)
         X = E[self.map_ids]; self.map_mean = X.mean(0)
         Xc = X - self.map_mean
-        U, S, V = torch.pca_lowrank(Xc, q=8, center=False)
-        self.map_V = V[:, :2]
+        # On the CPU: pca_lowrank on an MPS tensor never returns (PyTorch 2.14.1, Apple Silicon).
+        U, S, V = torch.pca_lowrank(Xc.cpu(), q=8, center=False)
+        self.map_V = V[:, :2].to(Xc.device)
         pts = Xc @ self.map_V
         self.map_pts = pts.cpu().tolist()
         self.map_labels = [self.tok.decode([int(i)]) for i in self.map_ids.cpu()]
@@ -615,7 +621,7 @@ def conditions(t0):
     with which libraries, and what is changed (a lesion) at the time of the reply."""
     if MODEL is None: return None
     c = {"engine": "inside", "model": os.path.basename(MODEL.model_dir.rstrip("/\\")), "model_dir": MODEL.model_dir,
-         "weights_hash": MODEL.weights_hash, "weights_hash_of": MODEL.weights_hash_of,
+         "weights_hash": MODEL.weights_hash, "weights_hash_of": MODEL.weights_hash_of, "weights_fp": MODEL.weights_fp,
          "dtype": str(MODEL.model.dtype).replace("torch.", ""), "device": MODEL.device, "versions": VERSIONS,
          "changed": {"lesion": lesion_summary()}, "seconds": round(time.time() - t0, 2)}
     if MODEL.no_think_appended is not None: c["no_think_appended"] = MODEL.no_think_appended
@@ -686,7 +692,7 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self._send(500, {"error": f"{type(e).__name__}: {e}"[:4000]})
     def do_POST(self):
-        global CKPT, LESION, SENSE, FIGHT, CONN, ANAT, SAEB
+        global CKPT, LESION, SENSE, FIGHT, CONN, ANAT, SAEB, OVM, CTX, ATT
         if self._foreign(): return
         if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json": return self._send(415, {"error": "Content-Type must be application/json"})
         if not hmac.compare_digest((self.headers.get("X-PSI-Token") or "").encode(), TOKEN.encode()): return self._send(403, {"error": "missing or wrong X-PSI-Token"})
@@ -743,6 +749,43 @@ class H(BaseHTTPRequestHandler):
                 elif act == "contexts": r = SAEB.contexts(int(L_), int(body.get("id")), max(2, min(20, int(body.get("n_pos", 5)))), max(2, min(20, int(body.get("n_neg", 5)))), int(body.get("seed", 0)))
                 elif act == "set_score": r = SAEB.set_score(int(L_), int(body.get("id")), body.get("score") if isinstance(body.get("score"), dict) else {})
                 else: return self._send(400, {"error": "sae: action is one of list, encode, feature, search, steer, attribute, label, import, reload, evaluate, scorable, contexts, set_score"})
+                r["conditions"] = conditions(t0); return self._send(200, r)
+            if self.path.rstrip("/") == "/override":
+                # The override map (src/override.py). The risk probe belongs to the intact weights: refused under a cut.
+                if lesion_summary() is not None: return self._send(409, {"error": "A Tipping-point cut is in force: the override map's probe was measured on the intact model. Restore it first."})
+                if OVM is None or OVM.t is not MODEL: OVM = override_mod.OverrideMap(MODEL)
+                if isinstance(body.get("evidence"), dict): return self._send(200, OVM.evidence(body["evidence"]))
+                prompt = str(body.get("prompt", "")).strip()
+                if not prompt: return self._send(400, {"error": "override: prompt is required"})
+                r = OVM.read(prompt[:2000], (str(body.get("claim") or "").strip()[:200] or None), _lens_arg({"lens": body.get("lens", False)}), max(4, min(96, int(body.get("n_new", 48)))))
+                r["conditions"] = conditions(t0); return self._send(200, r)
+            if self.path.rstrip("/") == "/context":
+                # The context lab (src/context_lab.py): the context is the variable. Reads under a Tipping-point cut too;
+                # conditions says so.
+                if CTX is None or CTX.t is not MODEL: CTX = context_mod.ContextLab(MODEL)
+                act = body.get("action") or "run"
+                try:
+                    if act == "run": r = CTX.run(body.get("question"), body.get("pieces"), body.get("options"), body.get("frame", ""), body.get("n_new", 96), body.get("top", 8))
+                    elif act == "diverge": r = CTX.diverge(body.get("question"), body.get("pieces"), body.get("a", ""), body.get("b", ""), body.get("text") or None, body.get("n", 12))
+                    elif act == "tree": r = CTX.tree(body.get("question"), body.get("pieces"), body.get("key", ""), body.get("show", 6), body.get("expand", 3), body.get("depth", 3), body.get("leaf_new", 30))
+                    else: return self._send(400, {"error": "context: action is one of run, diverge, tree"})
+                except ValueError as e: return self._send(400, {"error": str(e)})
+                r["conditions"] = conditions(t0); return self._send(200, r)
+            if self.path.rstrip("/") == "/attractor":
+                # The attractor lab (src/attractor_lab.py): a concept as an order parameter. Steering lasts for the request
+                # only; directions are kept in memory by name (rebuilt after the engine restarts).
+                if ATT is None or ATT.t is not MODEL: ATT = attractor_mod.AttractorLab(MODEL)
+                act = body.get("action") or "list"
+                try:
+                    if act == "list": r = {"directions": {k: {"layer": v["layer"], "pairs": v["pairs"], "pos": v["pos"], "neg": v["neg"]} for k, v in ATT.dirs.items()}}
+                    elif act == "build": r = ATT.build(body.get("name"), body.get("pos"), body.get("neg"), body.get("layer"))
+                    elif act == "read": r = ATT.read(body.get("name"), body.get("text"), body.get("last", 48))
+                    elif act == "funnel": r = ATT.funnel(body.get("question"), body.get("options"), body.get("k", 8), body.get("points", 10), body.get("n_new", 40), body.get("temperature", 1.0))
+                    elif act == "path": r = ATT.path(body.get("name"), body.get("question"), body.get("options"), body.get("frame", ""), body.get("target"),
+                                                    body.get("max_strength", 4.0), body.get("steps", 5), body.get("n_new", 32), body.get("pieces"), body.get("control", True))
+                    elif act == "constraint": r = ATT.constraint(body.get("name"), body.get("prompts"), body.get("frame"), body.get("as", "system"), body.get("strength", 1.0))
+                    else: return self._send(400, {"error": "attractor: action is one of list, build, read, funnel, path, constraint"})
+                except ValueError as e: return self._send(400, {"error": str(e)})
                 r["conditions"] = conditions(t0); return self._send(200, r)
             if self.path.rstrip("/") == "/vectors":
                 r = MODEL.vectors(str(body.get("text", "")), "mean" if body.get("pool") == "mean" else "last", int(body.get("dims", 256)), int(body.get("seed", 0)))

@@ -16,7 +16,10 @@ dataset text and published PSI records. Run only when Settings > Hugging Face ha
   record <repo> <file>                          a small published record (cut.json, recipe.json, a PSI report), read as data
   gguf_base <file.gguf>                         which Hugging Face repo a GGUF says it was made from
 
-Never pickles: .bin/.pt/.pth/.pkl/.ckpt are refused, and a model whose config needs its own code (auto_map) is refused.
+Never pickles or code: .bin/.pt/.pth/.pkl/.ckpt/.py are never downloaded. A config that points to the repo's own code
+(auto_map) is refused, unless its model_type and architectures are built into the installed transformers (Phi-3.5
+ships both): then the repo's code is left behind and the built-in class loads the weights (PSI never sets
+trust_remote_code).
 Output: PSI-PROGRESS <json> lines, then PSI-DONE <json> or PSI-ERROR <message>. The token (PSI_HF_TOKEN) is never printed.
 """
 import fnmatch, hashlib, json, os, re, sys, time, urllib.parse, urllib.request
@@ -68,6 +71,16 @@ def _sha_of(s):
     return lfs.get("sha256") if isinstance(lfs, dict) else getattr(lfs, "sha256", None)
 
 
+def _builtin(mt, archs):
+    """The model type and every listed architecture are classes of the installed transformers (so its own code is
+    not needed)."""
+    try:
+        import transformers
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+    except Exception: return False
+    return bool(mt in CONFIG_MAPPING_NAMES and archs and all(isinstance(a, str) and hasattr(transformers, a) for a in archs))
+
+
 def info(repo, rev=None):
     a = api(); m = a.model_info(repo_arg(repo), revision=rev, files_metadata=True)
     files = [{"name": s.rfilename, "size": s.size, "sha256": _sha_of(s)} for s in (m.siblings or [])]
@@ -76,7 +89,9 @@ def info(repo, rev=None):
     card = card.to_dict() if hasattr(card, "to_dict") else dict(card or {})
     cfg = getattr(m, "config", None) or {}
     mt = (cfg.get("model_type") or "") if isinstance(cfg, dict) else ""
-    remote_code = bool(isinstance(cfg, dict) and cfg.get("auto_map"))
+    auto_map = bool(isinstance(cfg, dict) and cfg.get("auto_map"))
+    builtin = auto_map and _builtin(mt, cfg.get("architectures"))
+    remote_code = auto_map and not builtin
     st = [f for f in files if f["name"].endswith(".safetensors") and "/" not in f["name"]]
     gguf = [f for f in files if f["name"].lower().endswith(".gguf")]
     adapters = [f for f in gguf if re.search(r"lora|adapter|cvec|control", f["name"], re.I)]
@@ -88,8 +103,8 @@ def info(repo, rev=None):
             "licence": card.get("license") or next((t[8:] for t in (m.tags or []) if t.startswith("license:")), None),
             "tags": m.tags or [], "em": EM_TAG in (m.tags or []), "pipeline": getattr(m, "pipeline_tag", None), "library": getattr(m, "library_name", None),
             "model_type": mt or None, "architectures": (cfg.get("architectures") if isinstance(cfg, dict) else None),
-            "inside_engine": ("no: it needs its own code (auto_map), which PSI never runs" if remote_code else INSIDE.get(mt, f"unknown ({mt or 'no model_type'}): it may not load") if st else "no safetensors weights"),
-            "remote_code": remote_code,
+            "inside_engine": ("no: it needs its own code (auto_map), which PSI never runs" if remote_code else (INSIDE.get(mt, f"unknown ({mt or 'no model_type'}): it may not load") + (" (its own code is left behind: the class built into transformers loads it)" if builtin else "")) if st else "no safetensors weights"),
+            "remote_code": remote_code, "auto_map_builtin": bool(builtin),
             "folder": {"files": [f["name"] for f in folder], "bytes": sum(f["size"] or 0 for f in folder)} if st else None,
             "gguf": [{"name": f["name"], "bytes": f["size"]} for f in gguf if f not in adapters],
             "adapters": [{"name": f["name"], "bytes": f["size"]} for f in adapters],

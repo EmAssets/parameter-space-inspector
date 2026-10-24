@@ -137,12 +137,18 @@
     r.append(el('span', 'fe-id', `#${f}`), el('span', 'fe-name', name || `feature ${f}`), el('span', 'fe-v', f3(v)), bar);
     r.addEventListener('click', onClick); box.appendChild(r); return r;
   }
+  // The last reading of each part (which features fire, search, why this next word) is kept (PSI.keep): a reload or
+  // another device shows it again. The layer picker is not restored (its list comes from the SAEs on disk); each kept
+  // result names its own layer.
+  function showEnc(r) {
+    ENC = r; renderEnc(); PSI.status($('feStat'), `layer ${ENC.layer} · unexplained ${ENC.unexplained == null ? 'not measured (one piece)' : `${(ENC.unexplained * 100).toFixed(0)}%`}`, 'ok');
+    PSI.cond($('feStat'), [...(PSI.insideCondParts ? PSI.insideCondParts(ENC.conditions, []) : [])], 'read on');
+  }
+  const KEEP_ENC = PSI.keep('features-encode', { inputs: ['feText'], status: 'feStat', render: (r) => { if (r && r.tokens) showEnc(r); } });
   $('feGo').addEventListener('click', () => {
     if (needSae($('feStat'))) return; if (!$('feText').value.trim()) return PSI.status($('feStat'), 'Type some text first.', 'warn');
     return job($('feGo'), $('feStat'), 'reading the text…', 'Finding the features failed', async () => {
-      ENC = await psi.sae({ action: 'encode', text: $('feText').value, layer: layer(), k: 8 });
-      renderEnc(); PSI.status($('feStat'), `layer ${ENC.layer} · unexplained ${ENC.unexplained == null ? 'not measured (one piece)' : `${(ENC.unexplained * 100).toFixed(0)}%`}`, 'ok');
-      PSI.cond($('feStat'), [...(PSI.insideCondParts ? PSI.insideCondParts(ENC.conditions, []) : [])], 'read on');
+      showEnc(await KEEP_ENC.call('sae', { action: 'encode', text: $('feText').value, layer: layer(), k: 8 }));
     });
   });
   function renderEnc(sel) {
@@ -200,15 +206,18 @@
   }
 
   // ── 2. search ──
+  function showSearch(r) {
+    const a = $('feByName'), b = $('feByText'); a.textContent = ''; b.textContent = '';
+    r.by_name.forEach((x) => featRow(a, x.id, x.score, r.by_name[0].score, x.name, () => card(r.layer, x.id)));
+    r.by_text.forEach((x) => featRow(b, x.id, x.act, r.by_text[0] && r.by_text[0].act, x.name, () => card(r.layer, x.id)));
+    if (!r.by_name.length) a.appendChild(el('p', 'small muted', 'none'));
+    PSI.status($('feQStat'), `${r.by_name.length} by name, ${r.by_text.length} on the phrase`, 'ok');
+  }
+  const KEEP_Q = PSI.keep('features-search', { inputs: ['feQuery'], status: 'feQStat', render: (r) => { if (r && r.by_name) showSearch(r); } });
   $('feSearch').addEventListener('click', () => {
     if (needSae($('feQStat'))) return; if (!$('feQuery').value.trim()) return PSI.status($('feQStat'), 'Type what to look for.', 'warn');
     return job($('feSearch'), $('feQStat'), 'searching…', 'Search failed', async () => {
-      const r = await psi.sae({ action: 'search', layer: layer(), query: $('feQuery').value.trim() });
-      const a = $('feByName'), b = $('feByText'); a.textContent = ''; b.textContent = '';
-      r.by_name.forEach((x) => featRow(a, x.id, x.score, r.by_name[0].score, x.name, () => card(r.layer, x.id)));
-      r.by_text.forEach((x) => featRow(b, x.id, x.act, r.by_text[0] && r.by_text[0].act, x.name, () => card(r.layer, x.id)));
-      if (!r.by_name.length) a.appendChild(el('p', 'small muted', 'none'));
-      PSI.status($('feQStat'), `${r.by_name.length} by name, ${r.by_text.length} on the phrase`, 'ok');
+      showSearch(await KEEP_Q.call('sae', { action: 'search', layer: layer(), query: $('feQuery').value.trim() }));
     });
   });
 
@@ -216,23 +225,26 @@
   $('feWhy').addEventListener('click', () => {
     if (needSae($('feWhyStat'))) return;
     return job($('feWhy'), $('feWhyStat'), 'reading the prompt and tracing the next word back…', 'Explaining failed', async () => {
-      const r = await psi.sae({ action: 'attribute', prompt: $('feWhyPrompt').value, n: 8 });
-      const box = $('feWhyOut'); box.textContent = '';
-      const h = el('p'); h.append('next word: '); h.appendChild(el('b', null, `“${show(r.target)}”`)); box.appendChild(h);
-      r.layers.forEach((L) => {
-        const d = el('div', 'out minh-0 fe-why'); d.appendChild(el('p', 'k', `layer ${L.layer}`));
-        const share = Math.abs(L.state_total) > 1e-9 ? L.error / L.state_total : null;
-        d.appendChild(el('p', 'small muted', `features together ${f3(L.features_total)} · not explained by the SAE ${f3(L.error)}${share != null ? ` (${(share * 100).toFixed(0)}% of the layer's total ${f3(L.state_total)})` : ''}`));
-        const two = el('div', 'fe-two'), up = el('div', 'fe-list'), dn = el('div', 'fe-list');
-        up.appendChild(el('p', 'small muted', 'pushed it up')); dn.appendChild(el('p', 'small muted', 'pushed it down'));
-        const mx = Math.max(1e-9, ...L.pushed_up.map((x) => x.by), ...L.pushed_down.map((x) => x.by));
-        L.pushed_up.forEach((x) => featRow(up, x.id, x.by, mx, x.name, () => { $('feLayer').value = L.layer; info(); card(L.layer, x.id); $('feCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
-        L.pushed_down.forEach((x) => featRow(dn, x.id, x.by, mx, x.name, () => { $('feLayer').value = L.layer; info(); card(L.layer, x.id); $('feCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
-        two.append(up, dn); d.appendChild(two); box.appendChild(d);
-      });
-      PSI.status($('feWhyStat'), `${r.layers.length} layer${r.layers.length === 1 ? '' : 's'}`, 'ok');
+      showWhy(await KEEP_WHY.call('sae', { action: 'attribute', prompt: $('feWhyPrompt').value, n: 8 }));
     });
   });
+  function showWhy(r) {
+    const box = $('feWhyOut'); box.textContent = '';
+    const h = el('p'); h.append('next word: '); h.appendChild(el('b', null, `“${show(r.target)}”`)); box.appendChild(h);
+    r.layers.forEach((L) => {
+      const d = el('div', 'out minh-0 fe-why'); d.appendChild(el('p', 'k', `layer ${L.layer}`));
+      const share = Math.abs(L.state_total) > 1e-9 ? L.error / L.state_total : null;
+      d.appendChild(el('p', 'small muted', `features together ${f3(L.features_total)} · not explained by the SAE ${f3(L.error)}${share != null ? ` (${(share * 100).toFixed(0)}% of the layer's total ${f3(L.state_total)})` : ''}`));
+      const two = el('div', 'fe-two'), up = el('div', 'fe-list'), dn = el('div', 'fe-list');
+      up.appendChild(el('p', 'small muted', 'pushed it up')); dn.appendChild(el('p', 'small muted', 'pushed it down'));
+      const mx = Math.max(1e-9, ...L.pushed_up.map((x) => x.by), ...L.pushed_down.map((x) => x.by));
+      L.pushed_up.forEach((x) => featRow(up, x.id, x.by, mx, x.name, () => { $('feLayer').value = L.layer; info(); card(L.layer, x.id); $('feCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+      L.pushed_down.forEach((x) => featRow(dn, x.id, x.by, mx, x.name, () => { $('feLayer').value = L.layer; info(); card(L.layer, x.id); $('feCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+      two.append(up, dn); d.appendChild(two); box.appendChild(d);
+    });
+    PSI.status($('feWhyStat'), `${r.layers.length} layer${r.layers.length === 1 ? '' : 's'}`, 'ok');
+  }
+  const KEEP_WHY = PSI.keep('features-why', { inputs: ['feWhyPrompt'], status: 'feWhyStat', render: (r) => { if (r && r.layers) showWhy(r); } });
 
   // Opening the view reads the list (from the data folder: the engine does not start for it).
   const sec = $('tab-features');

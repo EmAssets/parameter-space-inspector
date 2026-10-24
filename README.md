@@ -83,7 +83,9 @@ The next question tests exactly that, with the rule fixed in advance: can one me
   and about 9 GB of free GPU memory (it falls back to the CPU, slowly). Emergence also needs the
   [Pythia-410m](https://huggingface.co/EleutherAI/pythia-410m) checkpoints.
 
-Developed and tested on Windows with a 16 GB NVIDIA GPU. Linux code paths exist; macOS is untested.
+Developed and tested on Windows with a 16 GB NVIDIA GPU. On an Apple Silicon Mac, the browser mode and the basic
+views are tested (llama.cpp on Metal, October 2026); the desktop app and the inside views are not yet tested on
+macOS. Linux code paths exist.
 
 ## Run it
 
@@ -112,15 +114,20 @@ npm install
 npm start
 ```
 
-Then open **Settings**, choose your GGUF file and press **Load**. Put `llama-server` on the PATH first, or set
-`PSI_LLAMA_DIR` to the llama.cpp folder (the app runs programs from that folder, so it is set only in the environment
-or `settings.json`, never from the window). Open only GGUF files you trust: llama.cpp parses them natively.
+Then open **Settings**, choose your GGUF file and press **Load**. Tell PSI where llama.cpp is first: set
+`PSI_LLAMA_DIR` to the llama.cpp folder, or `"llamaDir"` in `.userdata/settings.json` (the app runs programs from that
+folder, so it is set only there, never from the window). `llama-server` on the PATH also works, but there is no
+need to change your PATH. Open only GGUF files you trust: llama.cpp parses them natively.
 
 ### 3. By hand, step by step
 
-1. Install **Node.js 22.12+** and **git**.
-2. Download **llama.cpp** from its [releases](https://github.com/ggml-org/llama.cpp/releases): the build for your
-   system and GPU (the newest release named b&lt;number&gt;; for NVIDIA on Windows, the `cuda` zip plus its `cudart` zip).
+1. Install **Node.js 22.12+** and **git**. No administrator rights? The nodejs.org `.tar.gz` (macOS, Linux) or `.zip`
+   (Windows) unpacked into your home folder works; add its `bin` folder to the PATH for that terminal.
+2. Download **llama.cpp** from its [releases](https://github.com/ggml-org/llama.cpp/releases): the newest release named
+   b&lt;number&gt; (marked Pre-release; the one marked Latest may have no downloads), the asset for your system and GPU:
+   for NVIDIA on Windows, the `cuda` zip plus its `cudart` zip; on an Apple Silicon Mac, `...-bin-macos-arm64`.
+   **On a Mac**, a copy downloaded in a browser is quarantined and macOS blocks it (Load then hangs instead of
+   failing). After unpacking, run `xattr -dr com.apple.quarantine <llama.cpp folder>`, or download with `curl`.
 3. Download a **GGUF model**, for example [Qwen3-4B-Q8_0](https://huggingface.co/Qwen/Qwen3-4B-GGUF) (4.3 GB), or
    Qwen3-1.7B-Q8_0 (1.8 GB) with little GPU memory.
 4. Clone PSI, run `npm install`, then `npm start`.
@@ -128,8 +135,10 @@ or `settings.json`, never from the window). Open only GGUF files you trust: llam
 6. For the inside views (Neural net, Anatomy, Understanding and the others):
 
    ```bash
-   python -m venv .venv            # then use .venv's python and pip
-   pip install torch --index-url https://download.pytorch.org/whl/cu124   # PyTorch for your GPU (RTX 50-series: cu128)
+   python -m venv .venv            # Python 3.12; on a Mac install it first, then: python3.12 -m venv .venv
+   # then use .venv's python and pip
+   pip install torch --index-url https://download.pytorch.org/whl/cu124   # NVIDIA (RTX 50-series: cu128)
+   pip install torch               # a Mac (Metal/MPS is included) or no GPU
    pip install -r requirements.txt
    python research/convert_bf16.py --gguf <models>/<model>.gguf --out <models>/<model name>-bf16
    ```
@@ -195,11 +204,36 @@ The token is printed by `node src/devserver.js` at start (new each launch; set `
 Agents cannot change keys, the spending cap or the engine. Two switches in Settings > Agents are off until you turn them
 on: changing the model (cuts, concept erase, grow) and spending OpenRouter credit (asking frontier models).
 
+## A second model to test with, on your computer
+
+Instead of OpenRouter, the model that tests (Prometheus, Compare framings, self-consistency, the judge, fact checks,
+neuron naming) can be a second open model on the same computer, kept apart from the model under test. The model under
+test runs in PSI's own llama-server and inside engine; the tester runs in its own server, with its own process, port and
+model folder:
+
+```bash
+tools/tester-model.sh start              # a dedicated Ollama on 127.0.0.1:11435, models in ~/.psi-tester
+tools/tester-model.sh pull llama3.1:8b   # give it a model (a larger one calls tools more reliably)
+```
+
+Then Settings > Prometheus > *Run it on a tester model on this computer* lists it, and the model is
+`local/tester/llama3.1:8b` everywhere a model id is asked for (MCP agents included). Other OpenAI-compatible servers on
+this computer work the same way: Ollama on 11434 (`local/ollama/…`), LM Studio on 1234 (`local/lmstudio/…`), llama.cpp
+on 8080 (`local/llamacpp/…`); set others in settings.json (`local.endpoints`). Only loopback addresses are accepted,
+nothing is spent (no cap, no spending permission for agents), and PSI refuses its own llama-server as a tester. For a
+container instead, `docker compose -f tools/tester-docker-compose.yml up -d` runs the tester on the same port; on a Mac
+Docker has no access to the Metal GPU, so it runs on the CPU.
+
 ## What leaves your computer
 
 Nothing, unless you use an optional feature:
 
-- **Prometheus, external comparisons, fact checks, neuron naming**: OpenRouter, with your key and cap.
+- **Checking for updates** (Settings > Help and about): when you press Check now, or a few seconds after each start if
+  you turn on "Check for updates when the app starts" (off by default), it asks the git repository it was installed from (github.com for a normal install) for the newest commit on its
+  branch (git ls-remote). Nothing about you or your models is sent. Downloading and installing an update happen only
+  when you press them; an update that changes the app's Node packages also runs npm install (registry.npmjs.org).
+- **Prometheus, external comparisons, fact checks, neuron naming**: OpenRouter, with your key and cap. With a model on
+  this computer (`local/…`, above) nothing leaves it.
 - **Running Prometheus on your ChatGPT plan**: signing in goes to auth.openai.com, questions to api.openai.com. The sign-in
   carries a random identifier for your copy of the app.
 - **search_site / site_concept** (the guide's and MCP agents' tools for the site's essays): emergencemachine.com's

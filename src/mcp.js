@@ -59,6 +59,11 @@ const r3 = (x) => (x == null ? null : +(+x).toFixed(3));
 // tool whose actions differ (tipping_point, anatomy, external_models) says what THIS call costs.
 const C = (gpu, usd, changes_model, writes_files, seconds, note) => ({ gpu, usd, changes_model, writes_files, seconds, ...(note ? { note } : {}) });
 const SPEND_NOTE = 'spends the user’s OpenRouter money under their cap; the spend counter is written to settings.json';
+const FREE_NOTE = 'no money: only models on this computer (local/…) or on the user’s ChatGPT plan (chatgpt/…)';
+// Only OpenRouter ids cost money: local/<endpoint>/<model> (this computer) and chatgpt/<slug> (the user's plan) do not.
+const paid = (models) => (Array.isArray(models) ? models : [models]).some((x) => typeof x === 'string' && x && !/^(local|chatgpt)\//.test(x));
+// The tool list describes a call with no arguments yet: it says what the tool may cost, so it counts as paid there.
+const listing = (a) => !a || !Object.keys(a).length;
 const TIP_RO = ['baseline', 'restore', 'status', 'scorecard', 'concept_find'];
 const ANAT_CHANGE = ['concept_knockout', 'concept_erase', 'concept_inject', 'build_examples', 'build_stats'];
 // Anatomy actions that only read; any other action (a new one included) counts as a change for an outside agent.
@@ -82,10 +87,10 @@ const COST = {
   anatomy: (a) => C(true, false, ['concept_knockout', 'concept_erase'].includes(act(a)), act(a) === 'build_examples', '~5-600',
     act(a) === 'build_examples' ? 'writes an examples file' : ANAT_CHANGE.includes(act(a)) ? 'changes the inside model during the request and restores it at the end' : 'read-only action'),
   neuron_names: C(false, false, false, false, '~0'),
-  external_models: (a) => C(false, act(a) === 'chat', false, act(a) === 'chat', '~2-60', act(a) === 'chat' ? SPEND_NOTE : 'free: account status or the model list'),
+  external_models: (a) => C(false, act(a) === 'chat' && paid([a.model]), false, act(a) === 'chat', '~2-60', act(a) === 'chat' ? (paid([a.model]) ? SPEND_NOTE : FREE_NOTE) : 'free: account status, the model list, or the local models’ status'),
   score_my_text: C(true, false, false, false, '~0.3 per token, 3 texts', 'needs a running engine; never starts one'),
-  framing_side_by_side: C(true, true, false, true, '~5-120', `${SPEND_NOTE}; the open model column uses the local engine only if it is already running`),
-  self_consistency: C(true, true, false, true, '~5-200', `${SPEND_NOTE}; the open model column uses the local engine only if it is already running`),
+  framing_side_by_side: (a) => { const p = listing(a) || paid(a.external || []); return C(true, p, false, true, '~5-120', `${p ? SPEND_NOTE : FREE_NOTE}; the open model column uses the local engine only if it is already running`); },
+  self_consistency: (a) => { const p = listing(a) || paid([a.external_model]); return C(true, p, false, true, '~5-200', `${p ? SPEND_NOTE : FREE_NOTE}; the open model column uses the local engine only if it is already running`); },
 };
 // Calls that change the user's model (or train a new one) need settings.agents.allow_changes when an outside agent asks.
 // lesion_restore is an undo and stays open; knock_out_neurons / ablate_heads last for the request only.
@@ -137,6 +142,14 @@ const AN = {
   self_consistency: { measured: 'your sampled output via OpenRouter (behaviour only)', relation: 'your behaviour, if the model sampled is you; the open model column is an analogue', ...AN_SELF },
 };
 const precisionOf = (f) => { const m = /(MXFP4|BF16|F16|F32|IQ\d[_A-Z0-9]*|Q\d[_A-Z0-9]*)/i.exec(String(f || '').split(/[\\/]/).pop()); return m ? m[1].toUpperCase() : 'precision not read from the file name'; };
+// Where the sampled models ran: every id local/… (this computer), every id chatgpt/… (the user's plan), or OpenRouter.
+function modelIds(args) { const a = args || {}; return [a.model, a.external_model, ...(Array.isArray(a.external) ? a.external : [])].filter((x) => typeof x === 'string' && x); }
+function sampledVia(ctx) {
+  const ids = modelIds(ctx.args);
+  if (ids.length && ids.every((x) => /^local\//.test(x))) return 'from a model on this computer (local/…)';
+  if (ids.length && ids.every((x) => /^chatgpt\//.test(x))) return 'via your ChatGPT plan';
+  return 'via OpenRouter';
+}
 // The analogue block of one result (see AN).
 function analogueOf(t, conditions, ctx) {
   const a = AN[t.name] || {}, eng = ctx.eng || t.eng, base = { ...(['local', 'inside'].includes(eng) ? AN_MODEL : AN_STORED), ...a };
@@ -145,9 +158,10 @@ function analogueOf(t, conditions, ctx) {
     if (eng === 'local') measured = `${conditions.model_file || 'the local model (file not reported)'}, ${precisionOf(conditions.model_file)}, llama.cpp`;
     else if (eng === 'inside') measured = conditions.model ? `${conditions.model}, ${conditions.dtype || 'precision not reported'}, PyTorch${conditions.device ? ` on ${conditions.device}` : ''}` : 'the inside engine’s model (not reported)';
     else if (eng === 'file') measured = conditions.file && conditions.file.path ? `${base0(conditions.file.path)}, ${precisionOf(conditions.file.path)}, fingerprint.py on the CPU` : 'a model file (not named)';
-    else if (eng === 'external') measured = act(ctx.args) === 'chat' ? 'your sampled output via OpenRouter (behaviour only)' : 'no model measured (OpenRouter account or model list)';
+    else if (eng === 'external') measured = act(ctx.args) === 'chat' ? `your sampled output ${sampledVia(ctx)} (behaviour only)` : 'no model measured (OpenRouter account or model list)';
     else measured = 'stored result';
   }
+  if (eng === 'self') measured = measured.replace('via OpenRouter', sampledVia(ctx));   // local/… and chatgpt/… models never go through OpenRouter
   return { measured, you_measured: false, ...(a.relation ? { relation: a.relation } : {}), transfers: base.transfers, does_not_transfer: base.does_not_transfer, ...(ctx.an && ctx.an.extra ? ctx.an.extra : {}) };
 }
 const base0 = (f) => (f ? String(f).split(/[\\/]/).filter(Boolean).pop() : f);
@@ -162,6 +176,12 @@ function loadGuide() {
 }
 function defaultLens() {
   try { const m = fs.readFileSync(path.join(__dirname, 'ui', 'app.js'), 'utf8').match(/const LENS = `([\s\S]*?)`;/); return m ? m[1] : ''; } catch (_) { return ''; }
+}
+// The live understanding battery, shared with the Understanding view and lesion.py: the value after
+// "PSI_UNDERSTANDING_TESTS =" in ui/understanding-tests.js is strict JSON.
+function builtinTests() {
+  const src = fs.readFileSync(path.join(__dirname, 'ui', 'understanding-tests.js'), 'utf8'), at = src.slice(src.indexOf('PSI_UNDERSTANDING_TESTS ='));
+  return JSON.parse(at.slice(at.indexOf('['), at.lastIndexOf(']') + 1));
 }
 
 const obj = (props, req = []) => ({ type: 'object', properties: props, required: req, additionalProperties: true });
@@ -181,7 +201,7 @@ async function site(config, name, args) {
   return ((r.result && r.result.content) || []).map((c) => c.text).join(String.fromCharCode(10));
 }
 
-function tools(call, config) {
+function tools(call, config, records = null) {
   const allowChanges = () => !!(config.settings.agents && config.settings.agents.allow_changes === true);
   const allowSpend = () => !!(config.settings.agents && config.settings.agents.allow_spend === true);
   const G = loadGuide();
@@ -319,17 +339,26 @@ function tools(call, config) {
   }
 
   // Money first: every external call of a run is estimated before the first is sent.
-  const MODEL_ID = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._:-]+$/;   // OpenRouter ids, or chatgpt/<slug> for the user's ChatGPT plan
+  // OpenRouter ids, chatgpt/<slug> for the user's ChatGPT plan, or local/<endpoint>/<model> on this computer (the model
+  // part may hold slashes and tags: local/lmstudio/google/gemma-4-e4b, local/tester/hf.co/owner/repo:Q4_K_M).
+  const MODEL_ID = /^(?:[A-Za-z0-9._-]+\/[A-Za-z0-9._:-]+|local\/[a-z0-9][a-z0-9_-]{0,31}\/[A-Za-z0-9._:@+\/-]{1,200})$/;
   async function preflight(jobs, maxUsd, tool, ctx) {
     let usd = 0; const per = [];
-    for (const j of jobs) { const e = await call('external', { action: 'estimate', model: j.model, messages: j.messages, maxTokens: j.maxTokens, temperature: j.temperature, n: j.n }); usd += e.usd; per.push({ model: j.model, n: j.n, usd: e.usd }); ctx.lastEst = e; }
+    // Free estimates (local, plan) carry no cap figures: only an OpenRouter estimate is kept for the cap check below.
+    for (const j of jobs) { const e = await call('external', { action: 'estimate', model: j.model, messages: j.messages, maxTokens: j.maxTokens, temperature: j.temperature, n: j.n }); usd += e.usd; per.push({ model: j.model, n: j.n, usd: e.usd }); if (!e.local && !e.plan) ctx.lastEst = e; }
     const e = ctx.lastEst || {}, est = { usd: +usd.toFixed(5), by_call: per, basis: e.basis, spent_before: e.spent, cap: e.cap, remaining_before: e.remaining };
     ctx.cond.estimate = est;
     if (usd > maxUsd) throw new Error(`${tool} refused before any call: the estimate is $${usd.toFixed(4)}, above max_usd $${maxUsd}. Nothing was sent or spent.`);
     if (e.cap != null && (e.spent || 0) + (e.reserved || 0) + usd > e.cap) throw new Error(`${tool} refused before any call: the estimate $${usd.toFixed(4)} would pass the user’s spending cap ($${(e.spent || 0).toFixed(4)} of $${e.cap} spent). Nothing was sent or spent; the cap is the user’s (Settings).`);
     return est;
   }
-  const chatOnce = async (j, ctx) => { const r = await call('external', { action: 'chat', model: j.model, messages: j.messages, maxTokens: j.maxTokens, temperature: j.temperature }); ctx.usd = (ctx.usd || 0) + (+r.cost || 0); if (r.plan) planNote(ctx, j.model, j.temperature, j.maxTokens); return r; };
+  const chatOnce = async (j, ctx) => { const r = await call('external', { action: 'chat', model: j.model, messages: j.messages, maxTokens: j.maxTokens, temperature: j.temperature }); ctx.usd = (ctx.usd || 0) + (+r.cost || 0); if (r.plan) planNote(ctx, j.model, j.temperature, j.maxTokens); if (r.local) localNote(ctx, j.model, r); return r; };
+  // A model on this computer: which server answered and with what sampling, so a result says what tested it.
+  function localNote(ctx, model, r) {
+    ctx.cond.local_models = ctx.cond.local_models || {};
+    // Only the tester (its own process, port and model folder) is isolated by construction; another local server is a separate process, but the same weights are not checked.
+    if (!ctx.cond.local_models[model]) ctx.cond.local_models[model] = { source: r.cost_source, sampling: r.sampling, isolated_from_model_under_test: r.isolated === true ? true : 'a separate server; whether it holds the same weights as the model under test is not checked' };
+  }
   // A ChatGPT-plan model samples at the plan's own temperature and length: said in the conditions and the not-measured list.
   function planNote(ctx, model, temp, maxTok) {
     ctx.cond.plan_models = ctx.cond.plan_models || {};
@@ -343,9 +372,10 @@ function tools(call, config) {
     const prompt = String(a.prompt || ''), F = a.framings, X = a.external || [], n = a.samples || 1, maxTok = a.max_tokens || 200, maxUsd = +a.max_usd;
     if (!prompt.trim()) throw new Error('framing_side_by_side: prompt is empty; nothing was run.');
     if (!Array.isArray(F) || !F.length || F.length > 4 || F.some((f) => typeof f !== 'string')) throw new Error('framing_side_by_side: framings must be 1 to 4 strings; nothing was run.');
-    if (!Array.isArray(X) || X.length > 3 || X.some((m) => typeof m !== 'string' || !MODEL_ID.test(m))) throw new Error('framing_side_by_side: external must be up to 3 OpenRouter model ids (vendor/model); nothing was run.');
+    if (!Array.isArray(X) || X.length > 3 || X.some((m) => typeof m !== 'string' || !MODEL_ID.test(m))) throw new Error('framing_side_by_side: external must be up to 3 model ids: OpenRouter (vendor/model), chatgpt/<slug> or local/<endpoint>/<model>; nothing was run.');
     if (!(Number.isInteger(n) && n >= 1 && n <= 5)) throw new Error('framing_side_by_side: samples must be 1..5; nothing was run.');
-    if (!(maxUsd > 0)) throw new Error('framing_side_by_side: max_usd is required and must be above 0; nothing was run.');
+    // Free models only (local/…, chatgpt/…, or none beside the open model): $0 is a valid budget. Any OpenRouter model needs one above 0.
+    if (!(maxUsd > 0 || (maxUsd === 0 && !paid(X)))) throw new Error('framing_side_by_side: max_usd is required: above 0 when an OpenRouter model is named, 0 or more otherwise; nothing was run.');
     const temp = a.temperature != null ? +a.temperature : n > 1 ? 0.7 : 0;
     const jobs = []; X.forEach((m) => F.forEach((f, fi) => jobs.push({ model: m, fi, messages: framed(f, prompt), maxTokens: maxTok, temperature: temp, n })));
     const est = X.length ? await preflight(jobs, maxUsd, 'framing_side_by_side', ctx) : { usd: 0, note: 'no external models: nothing to spend' };
@@ -380,10 +410,10 @@ function tools(call, config) {
   async function selfConsistency(a, ctx) {
     const prompt = String(a.prompt || ''), m = a.external_model, n = a.n, temp = +a.temperature, maxTok = a.max_tokens || 150, maxUsd = +a.max_usd;
     if (!prompt.trim()) throw new Error('self_consistency: prompt is empty; nothing was run.');
-    if (typeof m !== 'string' || !MODEL_ID.test(m)) throw new Error('self_consistency: external_model must be an OpenRouter model id (vendor/model); nothing was run.');
+    if (typeof m !== 'string' || !MODEL_ID.test(m)) throw new Error('self_consistency: external_model must be a model id: OpenRouter (vendor/model), chatgpt/<slug> or local/<endpoint>/<model>; nothing was run.');
     if (!(Number.isInteger(n) && n >= 2 && n <= 20)) throw new Error('self_consistency: n must be 2..20; nothing was run.');
     if (!(temp > 0 && temp <= 2)) throw new Error('self_consistency: temperature must be above 0 (and at most 2): at 0 every sample is the same answer; nothing was run.');
-    if (!(maxUsd > 0)) throw new Error('self_consistency: max_usd is required and must be above 0; nothing was run.');
+    if (!(maxUsd > 0 || (maxUsd === 0 && !paid([m])))) throw new Error('self_consistency: max_usd is required: above 0 for an OpenRouter model, 0 or more for a local or plan model; nothing was run.');
     const msgs = [{ role: 'user', content: prompt }];
     const est = await preflight([{ model: m, messages: msgs, maxTokens: maxTok, temperature: temp, n }], maxUsd, 'self_consistency', ctx);
     const answers = [], failures = [];
@@ -437,6 +467,13 @@ function tools(call, config) {
     { name: 'glossary', ro: true, eng: 'none', d: 'Plain-language definitions of the terms used in the Inspector (token, logit lens, residual stream, attention head, KV cache, MLP neuron, bin, activation patching, lesion, checkpoint, phase shift, induction head, steering, probe, AUC, E-levels, fight classes, connectors, sensing surface…). Omit term to list all.',
       s: obj({ term: S('the term, or empty for the full list') }),
       run: async ({ term }) => { if (!term) return Object.keys(G.glossary); const k = Object.keys(G.glossary).find((x) => x.toLowerCase() === String(term).toLowerCase()) || Object.keys(G.glossary).find((x) => x.toLowerCase().includes(String(term).toLowerCase())); return k ? { term: k, meaning: G.glossary[k] } : { error: 'not in the glossary', terms: Object.keys(G.glossary) }; } },
+    // ── the raw data PSI kept (src/records.js), for PSI Studio and re-analysis ──
+    { name: 'records_list', ro: true, eng: 'none', d: 'The raw data PSI kept: every result a view returned and every tool call made through MCP, newest first (format psi-record 1). Each row: id, time, source (view, prometheus or agent), view, call, size, and a title (the prompt or question). Filter by call, source, view, since (ISO time) or text. These are stored results from earlier runs, not a run now.',
+      s: obj({ call: S('only this call or tool, e.g. override or override_map'), source: S('view, prometheus or agent'), view: S('only this view'), since: S('ISO time'), text: S('words in the title'), offset: N('default 0'), limit: N('default 50, at most 500') }),
+      run: async (a) => { if (!records) throw new Error('records are not kept by this build'); return records.list(a); } },
+    { name: 'record_read', ro: true, eng: 'none', d: 'One kept result in full (an id from records_list): the call, its arguments, the time, the source, and the value exactly as it was returned then, with its conditions. A stored result, not a run now.',
+      s: obj({ id: S('the id from records_list') }, ['id']),
+      run: async ({ id }) => { if (!records) throw new Error('records are not kept by this build'); return records.read(id); } },
 
     // ── the Emergence Machine site (the framework the Inspector tests) ──
     { name: 'search_site', ro: true, eng: 'site', d: 'Search the Emergence Machine essays (emergencemachine.com) and get the most relevant passages, each with its real Source URL. Use it to connect a result in the Inspector to the framework, or to answer what an essay says. Only cite URLs that appear on Source lines. Passages are claims and stored findings, not a run on the model loaded now.',
@@ -476,9 +513,32 @@ function tools(call, config) {
     // ── inside the model (the Python engine, Hugging Face weights) ──
     { name: 'layer_by_layer', ro: true, eng: 'inside', d: 'Neural net view: answer a prompt and show what each layer would say (logit lens), the neurons that fired hardest and what each piece looked at.',
       s: obj({ prompt: S('the question'), lens: B('E-level lens, default true'), n_new: N('tokens to write, default 16') }, ['prompt']), run: async (a) => call('trace', a.prompt, a) },
+    { name: 'override_map', ro: true, eng: 'inside', d: 'Override map: answer a question and show, at the first piece of the answer, what every layer would say (logit lens; layers where the lens fits poorly are marked), with the risk that the answer is unsupported from a probe measured on this exact model (its held-out accuracy and false-alarm rate are returned with it; a model without a measured probe gets the layer readings only, said so). With claim: pushback — its own short answer first, then the question after "I’m quite sure the answer is <claim>"; per layer, its own answer against the claim, and a flag when its own answer led inside while the output followed the claim. No framing by default (lens false): the probe was measured without one.',
+      s: obj({ prompt: S('the question'), claim: S('optional: a claim to push back with'), lens: B('E-level lens, default false (no risk score with a lens)'), n_new: N('pieces to write, default 48') }, ['prompt']), run: async (a) => call('override', a) },
+    { name: 'context_lab', ro: true, eng: 'inside', strict: true, d: 'Context lab: the context is the variable. A question plus up to 4 pieces of context, each with a role (system: the app’s hidden instructions, sent as the system message; premise: taken as true; claim: someone’s say-so; evidence: an observation; instruction: how to answer). action "run" (default): every combination of the pieces (2^n papers) through the model’s own chat template, thinking off: per paper the exact text read, the top next pieces after `frame` (a fixed start of the answer, the same for every paper), the odds of each named answer there (best phrasing, whole phrase, shares among the answers named) and its greedy answer; per piece how far it moved the odds (1 - overlap of the next-piece distributions), its average effect on each answer and the papers where it changed which answer leads; per pair, the interaction. action "diverge": papers a and b (one 0/1 per piece) continue the same answer text (a’s greedy answer unless text is given): per piece of the answer, the overlap of their next-piece odds. action "tree": from the answer start of paper key, the top `show` next pieces at every node, the top `expand` followed `depth` steps, a greedy finish from each leaf. Greedy, full softmax; reads the model, changes nothing. Unknown arguments are refused.',
+      s: { ...obj({ action: { type: 'string', enum: ['run', 'diverge', 'tree'], description: 'default "run"' }, question: S('the question'),
+        pieces: ARR('up to 4 pieces of context', { type: 'object', properties: { role: { type: 'string', enum: ['system', 'premise', 'claim', 'evidence', 'instruction'] }, text: { type: 'string' } }, required: ['role', 'text'] }),
+        options: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } }, description: 'run: named answers, each a list of phrasings, e.g. {"Canberra": ["Canberra"], "Sydney": ["Sydney"]}; up to 6' },
+        frame: S('run: the fixed start of the answer the odds are read after, e.g. "The capital of Australia is"; default none (the answer start)'),
+        n_new: N('run: pieces of free answer, default 96'), top: N('run: top next pieces shown, default 8'),
+        a: S('diverge: paper a, one 0/1 per piece, e.g. "000"'), b: S('diverge: paper b'), text: S('diverge: the answer text both continue; default paper a’s greedy answer'), n: N('diverge: answer pieces, default 12'),
+        key: S('tree: the paper, one 0/1 per piece'), show: N('tree: choices per node, default 6'), expand: N('tree: followed per node, default 3'), depth: N('tree: steps, default 3'), leaf_new: N('tree: greedy finish per leaf, default 30') }, ['question']), additionalProperties: false },
+      run: async (a) => call('context', a) },
+    { name: 'attractor_lab', ro: true, eng: 'inside', strict: true, d: 'Attractor lab: a concept as an order parameter, and how the model’s state moves along it. action "build" (name, pos, neg: contrasting texts) makes a concept direction per layer from the difference of mean states, scored on held-out pairs beside a random direction, and keeps it by name; "list" the directions held; "read" (name, text) the direction at every layer and piece (+1 pos side, -1 neg side); "funnel" (question, options) predictability emerging: from points along the greedy answer, the share of sampled continuations that still end in the same outcome, the lock-in point, and logit-lens entropy per layer; "path" (name, question, options, frame, pieces) path dependency: the direction swept up then down in ONE conversation with the model’s own answers kept as history (hysteresis loop), beside fresh conversations and a random direction, plus every order of the pieces; "constraint" (name, prompts, frame) whether a frame narrows the parts: answer entropy, effective dimensionality of the states across prompts per layer, active neurons, and susceptibility to the direction beside a random one. Steering lasts for the request only; the model is not changed.',
+      s: { ...obj({ action: { type: 'string', enum: ['list', 'build', 'read', 'funnel', 'path', 'constraint'], description: 'default "list"' }, name: S('the direction’s name'),
+        pos: ARR('build: texts on the concept’s side (at least 4; pairs with neg)'), neg: ARR('build: contrasting texts'), layer: N('build: force a layer (default: the best held-out layer)'),
+        text: S('read: the text to read'), question: S('funnel / path: the question'),
+        options: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } }, description: 'named answers, each a list of phrasings (path needs at least 2)' },
+        frame: S('path: the fixed start of the answer the odds are read after; constraint: the constraining text (required)'), target: S('path: the named answer whose share is tracked (default the first)'),
+        max_strength: N('path: largest steering strength in units of the direction’s gap, default 4'), steps: N('path: steps from 0 to the largest strength, default 5'), n_new: N('answer pieces, default 32 (path) / 40 (funnel)'),
+        pieces: ARR('path: up to 4 pieces of context, tried in every order (a system piece stays the system message, an instruction stays after the question)', { type: 'object', properties: { role: { type: 'string', enum: ['system', 'premise', 'claim', 'evidence', 'instruction'] }, text: { type: 'string' } }, required: ['role', 'text'] }),
+        control: B('path: also run the random-direction control, default true'), k: N('funnel: sampled continuations per point, default 8'), points: N('funnel: points along the answer, default 10'),
+        temperature: N('funnel: sampling temperature, default 1'), prompts: ARR('constraint: at least 4 prompts'), as: { type: 'string', enum: ['system', 'prefix'], description: 'constraint: the frame as the system message (default) or before each prompt' },
+        strength: N('constraint: steering strength for susceptibility, default 1'), last: N('read: last pieces shown, default 48') }), additionalProperties: false },
+      run: async (a) => call('attractor', a) },
     { name: 'word_map', ro: true, eng: 'inside', d: 'Where words live in the model’s map of meaning: nearest pieces by embedding (Tokens view).', s: obj({ text: S('words or a sentence'), k: N('neighbours, default 8') }, ['text']), run: async (a) => call('embed', a.text, a.k) },
     { name: 'understanding_tests', ro: true, eng: 'inside', d: 'Run understanding tests: each item is a prompt with a good continuation and a surface-plausible bad one; returns the margin and the layer where the model gets it. items: [{what, prompt, good:[...], bad:[...]}]. Empty items runs the built-in set.',
-      s: obj({ items: ARR('tests', { type: 'object' }) }), run: async ({ items }) => call('understand', items || []) },
+      s: obj({ items: ARR('tests', { type: 'object' }) }), run: async ({ items }) => call('understand', items && items.length ? items : builtinTests()) },
     { name: 'knock_out_neurons', ro: true, eng: 'inside', strict: true, d: 'Neural net view: silence k neurons in each chosen layer for one answer and ask again: how much of the next token’s probability lived in them. plan "top" (default): the k strongest-firing neurons per layer, beside `seeds` random sets of the same size and layers as the control (seed is not used); ablation "zero" sets them to zero, "mean" holds them at their average on ordinary text (needs the normal range built in Neural net). plan "random": one random set only (seed picks it), with no control of its own. The silencing lasts for this request only; the model is unchanged afterwards. Unknown arguments are refused.',
       s: { ...obj({ prompt: S('the question'), layers: ARR('layer numbers (0-based); leave out for every layer', { type: 'integer' }), k: { type: 'integer', minimum: 1, description: 'neurons per layer, default 8' }, plan: { type: 'string', enum: ['top', 'random'], description: 'default "top"' },
         target: { type: 'integer', minimum: 0, description: 'optional token id (an index into the vocabulary: a number, not a word) to track; default: the model’s own top next token. tokenize gives ids.' }, lens: B('E-level lens, default true'), think: B('plan "top" only: let the model think first, default false'),
@@ -500,7 +560,7 @@ function tools(call, config) {
       s: obj({ heads: ARR('explicit [layer, head] pairs (0-based); leave out to choose by plan', { type: 'array', items: { type: 'integer' } }), top_k: { type: 'integer', minimum: 1, description: 'how many heads, default 12' }, plan: { type: 'string', enum: ['top', 'random'] },
         seed: { type: 'integer', description: 'for plan "random", default 0' }, text: S('ordinary text for the loss; default a built-in passage'), invented: S('a passage that mentions an invented word twice; default a built-in one') }),
       run: async (a, ctx) => { if (a.heads && a.heads.length && (a.top_k != null || a.plan != null)) ctx.cond.unused_arguments = { names: ['top_k', 'plan'].filter((k) => a[k] != null), why: 'explicit heads were given, so top_k and plan were not used' }; return call('ablateHeads', a); } },
-    { name: 'tipping_point', ro: false, eng: 'inside', d: 'Tipping point view: delete parts of the model and score what survives. action: "baseline" | "structural" (frac_neurons, frac_heads, mode random/top) | "manual" (layers, heads, neurons_per_layer) | "weights" (frac, scope, criterion) | "concept_find" / "concept" (concept, keep, k) | "sweep" (restores at its end) | "restore" | "save" (name: optional folder name): write the cut model as a new model folder beside the original, which is not changed; needs the same permission as cutting. A cut STAYS in the in-memory model until lesion_restore: every later inside result is the changed model’s, and changed_state says so.',
+    { name: 'tipping_point', ro: false, eng: 'inside', d: 'Tipping point view: delete parts of the model and score what survives. action: "baseline" | "structural" (frac_neurons, frac_heads, mode random | most | least; "top" = most) | "manual" (layers, heads, neurons_per_layer) | "weights" (frac, scope, criterion) | "concept_find" / "concept" (concept, keep, k) | "sweep" (restores at its end) | "restore" | "save" (name: optional folder name): write the cut model as a new model folder beside the original, which is not changed; needs the same permission as cutting. A cut STAYS in the in-memory model until lesion_restore: every later inside result is the changed model’s, and changed_state says so.',
       s: obj({ action: S('see description'), question: S('optional question to score'), frac_neurons: N(''), frac_heads: N(''), mode: S(''), concept: S('e.g. "cricket"'), keep: S('a related concept to keep'), k: N('neurons to delete for a concept'), name: S('save: folder name for the saved model (optional)'), layers: ARR('', { type: 'number' }), heads: ARR('', {}), neurons_per_layer: N('') }, ['action']), run: inside('lesion') },
     { name: 'lesion_restore', ro: false, eng: 'inside', d: 'Undo any Tipping-point cut: put the inside model back as loaded (from the weight files when they can be read, else from a memory snapshot). Returns the state after; safe to call when nothing is cut.',
       s: obj({}), run: async () => call('lesion', { action: 'restore' }) },
@@ -531,12 +591,12 @@ function tools(call, config) {
         return call('neuronNames', { model: m });
       } },
     // ── external models ──
-    { name: 'external_models', ro: false, eng: 'external', d: 'OpenRouter, through the app with its spending cap, and models on the user’s ChatGPT plan (chatgpt/<slug>, no money). action "status" (credit), "chat" (model, prompt or messages) to ask a frontier model (spends money), "models" (list).',
-      s: obj({ action: S('"status" | "chat" | "models"'), model: S('e.g. "anthropic/claude-opus-5.5"'), prompt: S('for chat') }, ['action']),
+    { name: 'external_models', ro: false, eng: 'external', d: 'OpenRouter, through the app with its spending cap; models on the user’s ChatGPT plan (chatgpt/<slug>, no money); and models on this computer (local/<endpoint>/<model>, no money), above all local/tester/<model>: a dedicated Ollama instance kept apart from the model under test (tools/tester-model.sh). action "status" (credit), "chat" (model, prompt or messages) to ask another model (OpenRouter spends money; local and plan do not), "models" (list, local first), "local_status" (which local servers answer and what they hold).',
+      s: obj({ action: S('"status" | "chat" | "models" | "local_status"'), model: S('e.g. "anthropic/claude-opus-5.5" or "local/tester/llama3.1:8b"'), prompt: S('for chat') }, ['action']),
       run: async (a, ctx) => {
         // Only these actions reach the app's OpenRouter layer: resetSpend, the cap and keys are the user's (Settings), never an agent's.
-        if (!['status', 'chat', 'models'].includes(a.action)) throw new Error(`external_models: action must be "status", "chat" or "models" (got ${JSON.stringify(a.action)}); spending cap and keys are changed only by the user in Settings`);
-        const allowed = { status: ['action'], models: ['action'], chat: ['action', 'model', 'prompt', 'messages', 'maxTokens'] }[a.action];
+        if (!['status', 'chat', 'models', 'local_status'].includes(a.action)) throw new Error(`external_models: action must be "status", "chat", "models" or "local_status" (got ${JSON.stringify(a.action)}); spending cap and keys are changed only by the user in Settings`);
+        const allowed = { status: ['action'], models: ['action'], local_status: ['action'], chat: ['action', 'model', 'prompt', 'messages', 'maxTokens'] }[a.action];
         const extra = Object.keys(a).filter((k) => !allowed.includes(k));
         if (extra.length) throw new Error(`external_models ${a.action}: unknown argument(s) ${extra.join(', ')}`);
         if (a.maxTokens != null && !(a.maxTokens > 0 && a.maxTokens <= 4000)) throw new Error('external_models chat: maxTokens must be 1..4000');
@@ -548,13 +608,13 @@ function tools(call, config) {
       run: async (a, ctx) => scoreMyText(a, ctx) },
     { name: 'framing_side_by_side', ro: false, eng: 'self', strict: true, d: 'The same prompt under up to 4 framings, answered by the open model (local engine, greedy, only if it is already running) and by up to 3 external models (OpenRouter, or chatgpt/<slug> on the user’s ChatGPT plan, where temperature and length are the plan’s defaults; said in the result) (samples each): a table model × framing → answer, with agreement (within a cell across samples, across models per framing, and how often a model’s answer changes with the framing). A framing is a system message; one containing {prompt} is the user turn with the prompt put in its place; "" is no framing. The cost is estimated from OpenRouter prices and max tokens BEFORE any call; the call is refused when the estimate exceeds max_usd or would pass the user’s spending cap. Actual spend is reported. Agreement is compared as normalised text and first sentence: crude, said so. Unknown arguments are refused.',
       s: { ...obj({ prompt: S('the question'), framings: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 4, description: 'system messages, or user-turn templates with {prompt}; "" for none' },
-        external: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'OpenRouter model ids, e.g. "anthropic/claude-opus-5.5", or chatgpt/<slug> for the user’s ChatGPT plan; may be empty' }, samples: { type: 'integer', minimum: 1, maximum: 5, description: 'samples per external model and framing, default 1' },
+        external: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'OpenRouter model ids, e.g. "anthropic/claude-opus-5.5", chatgpt/<slug> for the user’s ChatGPT plan, or local/<endpoint>/<model> on this computer (local/tester/… is isolated from the model under test; no money); may be empty' }, samples: { type: 'integer', minimum: 1, maximum: 5, description: 'samples per external model and framing, default 1' },
         temperature: { type: 'number', minimum: 0, maximum: 2, description: 'external models only (the open model is greedy); default 0 for 1 sample, 0.7 for more' }, max_tokens: { type: 'integer', minimum: 16, maximum: 800, description: 'per answer, default 200' },
-        max_usd: { type: 'number', exclusiveMinimum: 0, description: 'required: the most this call may spend; refused if the estimate is higher' } }, ['prompt', 'framings', 'max_usd']), additionalProperties: false },
+        max_usd: { type: 'number', minimum: 0, description: 'required: the most this call may spend; refused if the estimate is higher. 0 is allowed when only free models are named (local/…, chatgpt/…)' } }, ['prompt', 'framings', 'max_usd']), additionalProperties: false },
       run: async (a, ctx) => framingSideBySide(a, ctx) },
     { name: 'self_consistency', ro: false, eng: 'self', strict: true, d: 'Sample one external model n times on the same prompt at temperature > 0 and cluster the answers (exact normalised text, then first sentence): the agreement rate of the largest cluster with a Wilson 95% interval, and the same run on the open model (local engine, n seeds, only if it is already running). The cost is estimated BEFORE any call and refused above max_usd or the user’s cap; actual spend is reported. Agreement is behaviour only. Unknown arguments are refused.',
-      s: { ...obj({ prompt: S('the question'), external_model: S('an OpenRouter model id, or chatgpt/<slug> (the user’s ChatGPT plan samples at its own temperature, said in the result)'), n: { type: 'integer', minimum: 2, maximum: 20 }, temperature: { type: 'number', exclusiveMinimum: 0, maximum: 2 },
-        max_tokens: { type: 'integer', minimum: 16, maximum: 800, description: 'per answer, default 150' }, max_usd: { type: 'number', exclusiveMinimum: 0, description: 'required: the most this call may spend' } }, ['prompt', 'external_model', 'n', 'temperature', 'max_usd']), additionalProperties: false },
+      s: { ...obj({ prompt: S('the question'), external_model: S('an OpenRouter model id, chatgpt/<slug> (the user’s ChatGPT plan samples at its own temperature, said in the result), or local/<endpoint>/<model> on this computer (no money)'), n: { type: 'integer', minimum: 2, maximum: 20 }, temperature: { type: 'number', exclusiveMinimum: 0, maximum: 2 },
+        max_tokens: { type: 'integer', minimum: 16, maximum: 800, description: 'per answer, default 150' }, max_usd: { type: 'number', minimum: 0, description: 'required: the most this call may spend; 0 is allowed for a local or plan model' } }, ['prompt', 'external_model', 'n', 'temperature', 'max_usd']), additionalProperties: false },
       run: async (a, ctx) => selfConsistency(a, ctx) },
   ];
   return T;
@@ -585,7 +645,8 @@ async function envelope(t, raw, ctx, call) {
   let result = raw; const conditions = { read_at: at, ...ctx.cond };
   const eng = ctx.eng || t.eng;   // score_my_text says which engine it used
   if (eng === 'self') {           // external models, plus the open model's column when the local engine ran
-    conditions.source = 'OpenRouter (external models, outside this machine) and the local engine (the open model column, only if it was already running)';
+    const via = sampledVia(ctx);
+    conditions.source = `${via.includes('this computer') ? 'models on this computer (local/…, nothing leaves this machine)' : via.includes('ChatGPT') ? 'the user’s ChatGPT plan (outside this machine)' : 'OpenRouter (external models, outside this machine)'} and the local engine (the open model column, only if it was already running)`;
     if (ctx.meta) {
       const st = await call('engineState').catch(() => null);
       Object.assign(conditions, { engine: 'local (llama.cpp) for the open model column', model: st ? st.model : null, model_file: st ? base(st.model) : null, sampling: ctx.meta });
@@ -614,7 +675,7 @@ async function envelope(t, raw, ctx, call) {
   } else if (t.eng === 'file') conditions.engine = 'none (reads files; runs a script for signatures)';
   else if (t.eng === 'site') conditions.source = 'emergencemachine.com essays (stored text and claims, not a run on the model loaded now)';
   else if (t.eng === 'stored') conditions.source = 'stored in the app (earlier results, not a run on the model loaded now)';
-  else if (t.eng === 'external') conditions.source = 'OpenRouter (a frontier model, outside this machine)';
+  else if (t.eng === 'external') { const via = sampledVia(ctx); conditions.source = via.includes('this computer') ? 'a model on this computer (local/…, kept apart from the model under test; nothing leaves this machine)' : via.includes('ChatGPT') ? 'the user’s ChatGPT plan (outside this machine)' : 'OpenRouter (a frontier model, outside this machine)'; }
   else if (t.eng === 'lineage') conditions.engine = 'grow jobs (src/grow.py)';
   let truncated = false, cutNote;
   const text = JSON.stringify(result === undefined ? null : result) || 'null';
@@ -631,8 +692,8 @@ async function envelope(t, raw, ctx, call) {
 
 // What outside agents did in this run of the app: a small in-memory log for the window's "agent session" strip
 // (JSON-RPC method psi/agent_session). Prometheus (caller "app") is not counted.
-function createMcp({ call, config }) {
-  const T = tools(call, config); const byName = Object.fromEntries(T.map((t) => [t.name, t]));
+function createMcp({ call, config, records = null }) {
+  const T = tools(call, config, records); const byName = Object.fromEntries(T.map((t) => [t.name, t]));
   const allowChanges = () => !!(config.settings.agents && config.settings.agents.allow_changes === true);
   const allowSpend = () => !!(config.settings.agents && config.settings.agents.allow_spend === true);
   const usesPlan = (a) => [a.model, a.external_model, ...(Array.isArray(a.external) ? a.external : [])].some((m) => /^chatgpt\//.test(String(m || '')));
@@ -675,6 +736,7 @@ function createMcp({ call, config }) {
         try {
           const raw = await t.run(args, ctx);
           const env = await envelope(t, raw, ctx, call);
+          if (records) records.save({ source: agent ? 'agent' : 'prometheus', call: t.name, args, value: env });   // the raw data (src/records.js)
           if (agent) remember(t.name, true, env.cost && env.cost.spent_usd);
           return ok({ content: [{ type: 'text', text: JSON.stringify(env) }], isError: false });
         } catch (e) {

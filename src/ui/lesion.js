@@ -28,6 +28,10 @@
   // The tests the user added in Understanding are scored too, apart from the headline count.
   const yours = () => EX.custom().map((t) => ({ what: t.what || 'your test', prompt: t.prompt, good: t.good, bad: t.bad }));
   $('lsFrac').addEventListener('input', () => { $('lsFracLabel').textContent = `${$('lsFrac').value}%`; });
+  // Kept view (PSI.keep): the choices only. A cut changes the live model, so it is never run through the kept-call path
+  // and never replayed; the model's state always comes from the engine, and the rows are kept in this browser (EX.keep).
+  PSI.keep(VIEW, { inputs: ['lsQ', 'lsConcept', 'lsKeep', 'lsWhat', 'lsHow', 'lsFrac', 'lsLayers', 'lsHeads', 'lsNpl', 'lsK', 'lsSaveName'], render: () => {} })
+    .ready.then(() => { $('lsFracLabel').textContent = `${$('lsFrac').value}%`; });
 
   // A reply from other weights than the rows on screen: archive the rows (kept in this browser), forget the intact row
   // and the recorded answers, and start fresh.

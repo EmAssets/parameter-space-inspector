@@ -120,7 +120,9 @@ class Lesion:
 
     def structural(self, frac_neurons=0.0, frac_heads=0.0, mode="random", seed=0, question=None):
         """Mask a share of MLP neurons and heads. mode random | least (least active for the
-        question) | most (most active)."""
+        question) | most (most active; "top" is accepted for it, "bottom" for least)."""
+        mode = {"top": "most", "bottom": "least"}.get(mode, mode)   # an unknown mode used to fall through to least-first silently
+        if mode not in ("random", "least", "most"): raise ValueError(f'mode must be "random", "least" or "most" (got {mode!r})')
         self.restore(); rng = random.Random(seed); L = self.t.L; I = self.model.config.intermediate_size; Hn = self.model.config.num_attention_heads
         acts = None; asked = {"neurons": frac_neurons, "heads": frac_heads}
         if mode != "random" and question:

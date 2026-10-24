@@ -8,7 +8,7 @@ const call = async (name, ...args) => {
   if (!r.ok) throw new Error(r.error);
   return r.value;
 };
-const NAMES = ['readHead', 'readAll', 'pickModel', 'pickControlVector', 'settings', 'start', 'stop', 'tokenize', 'detokenize', 'next', 'complete', 'score', 'template', 'engineState', 'trace', 'traceStatus', 'embed', 'represent', 'idle', 'quiet', 'scoreText', 'ablate', 'understand', 'ckptList', 'ckptAsk', 'ckptTest', 'heads', 'ablateHeads', 'lesion', 'sense', 'fight', 'connector', 'setKey', 'listModels', 'external', 'traceRestart', 'anatomy', 'mcp', 'neuronNames', 'setupCheck', 'ckptCount', 'lineage', 'ladder', 'gpu', 'convert', 'convertStatus', 'experiments', 'jobs', 'sae', 'vectors', 'timeline', 'commons', 'chatgpt', 'hf', 'savePdf', 'saveFile'];
+const NAMES = ['readHead', 'readAll', 'pickModel', 'pickControlVector', 'settings', 'start', 'stop', 'tokenize', 'detokenize', 'next', 'complete', 'score', 'template', 'engineState', 'trace', 'traceStatus', 'embed', 'represent', 'idle', 'quiet', 'scoreText', 'ablate', 'understand', 'ckptList', 'ckptAsk', 'ckptTest', 'heads', 'ablateHeads', 'lesion', 'sense', 'fight', 'connector', 'setKey', 'listModels', 'external', 'traceRestart', 'anatomy', 'mcp', 'neuronNames', 'setupCheck', 'ckptCount', 'lineage', 'ladder', 'gpu', 'convert', 'convertStatus', 'experiments', 'jobs', 'sae', 'vectors', 'override', 'context', 'attractor', 'timeline', 'commons', 'chatgpt', 'hf', 'savePdf', 'saveFile', 'update', 'session', 'measure'];
 const api = Object.fromEntries(NAMES.map((n) => [n, (...a) => call(n, ...a)]));
 api.on = (channel, fn) => {
   if (!['log', 'progress', 'ladder'].includes(channel)) return () => {};

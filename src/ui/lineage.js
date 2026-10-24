@@ -69,6 +69,7 @@
       chain.appendChild(el('span', 'me', `g${r.gen} ${d.short} ${d.status === 'verified' ? '✓' : '✗'}`)); box.appendChild(chain);
     }
     if (d.status !== 'verified' && d.note) box.appendChild(el('p', d.status === 'broken' ? 'small bad' : 'small muted', d.note));
+    if (KEPT_MARKS && KEPT_MARKS.file === d.file) showMarks(KEPT_MARKS);   // the weights' answer kept from before, for this same file
     rings();
     $('lnAdopt').classList.toggle('hidden', !!d.record || d.status !== 'unsigned');
     // Signing is optional (Settings > Profile & keys): a ring signed by anyone, or by nobody, can grow; a broken chain cannot.
@@ -175,8 +176,16 @@
   $('lnMarks').addEventListener('click', async () => {
     const f = model(), box = $('lnMarksOut'); if (!f) { err('No model is loaded.', { text: 'Load a model first: there is nothing to ask.', action: { label: PSI.NEED_MODEL, view: 'settings', focus: 'stModelPick' } }); return; } box.textContent = '';
     $('lnMarks').disabled = true; stat('lnMarksStat', 'asking…', 'busy');
-    let d; try { d = await call({ action: 'marks', file: f }); } catch (e) { err(e); stat('lnMarksStat', `asking failed: ${PSI.explain(e).text}`, 'error'); return; } finally { $('lnMarks').disabled = false; }
-    stat('lnMarksStat', ''); L.marks = d; rings();
+    let d; try { d = await KEEP_MARKS.call('lineage', { action: 'marks', file: f }); } catch (e) { err(e); stat('lnMarksStat', `asking failed: ${PSI.explain(e).text}`, 'error'); return; } finally { $('lnMarks').disabled = false; }
+    stat('lnMarksStat', ''); KEPT_MARKS = d; showMarks(d);
+  });
+  // What the weights said, from asking just now or kept from before (PSI.keep). A kept answer is shown only beside the
+  // identity of the same file (render above), never for another model.
+  let KEPT_MARKS = null;
+  const KEEP_MARKS = PSI.keep('lineage-marks', { render: (d) => { KEPT_MARKS = d && d.marks ? d : null; if (KEPT_MARKS && L.info && L.info.file === d.file) showMarks(d); } });
+  function showMarks(d) {
+    const box = $('lnMarksOut'); box.textContent = '';
+    L.marks = d; rings();
     const names = { birth: 'birth' };
     const recorded = d.recorded || {};
     Object.entries(d.marks).forEach(([n, m]) => {
@@ -191,7 +200,7 @@
     });
     const note = d.seed_note ? `Tree mark: ${d.seed_note}. ` : '';
     box.appendChild(el('p', 'small muted', `${note}Saying it is proof: nobody can make a valid signature without the key. Not saying it proves nothing, because whoever trains a model can wash a mark out. Recognition is statistical: z 4 or more, with no decoy as familiar, counts as recognised.`));
-  });
+  }
 
   // ── growing ──────────────────────────────────────────────────────────────
   // How long a grow takes: measured on an earlier ring of this line on the same device when there is one,
@@ -263,7 +272,7 @@
     L.growing = true; fails = 0; $('lnGrow').disabled = true; $('lnLoadRow').classList.add('hidden'); $('lnGrowOut').textContent = '';
     stat('lnGrowStat', 'growing…', 'busy');
     prog = growProg(o.steps);
-    try { L.job = (await call(o)).job; poll(); } catch (e) { err(e); growEnd(); prog.fail('did not start'); prog = null; stat('lnGrowStat', `did not start: ${PSI.explain(e).text}`, 'error'); }
+    try { L.job = (await KEEP_GROW.call('lineage', o)).job; poll(); } catch (e) { err(e); growEnd(); prog.fail('did not start'); prog = null; stat('lnGrowStat', `did not start: ${PSI.explain(e).text}`, 'error'); }
   });
   // Stop ends the Python process; grow.py writes the grown model only when training finishes, so nothing half-made is kept
   function growProg(total) {
@@ -306,6 +315,17 @@
     $('lnGrowOut').textContent = lines.join('\n');
     if (!j.done) L.timer = setTimeout(poll, 1500);
   }
+  // A grow runs on the server: after a reload (or on another screen) the page finds the job it started (PSI.keep) and
+  // follows it again, or shows how it ended. Nothing is started again; the form comes back as it was.
+  async function resumeGrow(r, info) {
+    if (!info || !info.restored || !r || r.job == null || L.growing) return;
+    let j; try { j = await call({ action: 'job', job: r.job }); } catch (_) { return; }   // the server restarted since: that job is gone
+    L.job = r.job; fails = 0;
+    if (!j.done) { L.growing = true; $('lnGrow').disabled = true; $('lnLoadRow').classList.add('hidden'); prog = growProg(+$('lnSteps').value || (L.limits ? L.limits.steps.default : 1500)); }
+    poll();
+  }
+  const KEEP_GROW = PSI.keep('lineage-grow', { inputs: ['lnWidth', 'lnDepth', 'lnSteps', 'lnDevice', 'lnData', 'lnFile'], render: resumeGrow });
+  KEEP_GROW.ready.then(() => { $('lnFileRow').classList.toggle('hidden', $('lnData').value !== 'file'); estimate(); effects(); });
   function curve(rows, who) {
     const cv = $('lnCurve'); if (!rows.length) { cv.classList.add('hidden'); return; } cv.classList.remove('hidden');
     const r = Math.min(2, devicePixelRatio || 1), H = 120; cv.style.height = `${H}px`; cv.width = (cv.clientWidth || 700) * r; cv.height = H * r;

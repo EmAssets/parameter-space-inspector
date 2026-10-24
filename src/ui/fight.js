@@ -63,24 +63,32 @@
     const q = F.qwen, se = Math.round(196 * Math.sqrt(q.best * (1 - q.best) / F.n));
     return `Recorded study (${F.n} matched sentences, 5-fold, chance ${pct(F.chance)}): words alone ${q.layer0.toFixed(2)} · best layer (L${q.best_layer}) ${q.best.toFixed(2)} · gain ${q.gain.toFixed(2)} (each accuracy ±${se} pp at n ${F.n}): most of the class is already in the word choice.`;
   };
+  // A reading on screen: from a run just now, or kept from before (PSI.keep); a kept one shows the conditions it was read under.
+  function renderClass(resp, info = {}) {
+    const r = resp && resp.items && resp.items[0]; if (!r) return;
+    bars($('fcOut'), r);
+    const [t1, t2] = r.scores, T = r.temperature || 4, bl = r.baseline || { state: 'not returned' };
+    const base = bl.state === 'read' ? `Words alone (layer 0) read this sentence as ${bl.top} · ${bl.name} (raw ${sgn(bl.raw)}), ${bl.agrees ? 'the same class as' : 'a different class from'} layer ${r.layer}.`
+      : 'The words-alone reading of this sentence is not stored with this probe (the bundled probe file has no layer-0 probe).';
+    $('fcWhy').textContent = `Read at layer ${r.layer}: ${r.name}, a competitor that models ${r.models}. The bars are softmax(raw × ${T}): a display choice so six numbers read as shares, not probabilities, so no chance line is drawn on them. The measurement is the raw ridge score (fitted to 1 for the right class, 0 for the others): ${t1.class} ${sgn(t1.raw)}, next ${t2.class} ${sgn(t2.raw)}. ${floorText()} ${base} This is the model’s own reading of the kind of fight, not a rule.`;
+    tokens($('fcTokens'), r.tokens, `Each piece’s pull on ${r.top} · ${r.name} at layer ${r.layer}: amber towards it, blue away; the pulls add up to its raw score.`);
+    PSI.cond($('fcWhy'), [r.model || 'model not reported', `layer ${r.layer}`, `probe trained on ${r.probe_trained_on && r.probe_trained_on !== 'not recorded' ? r.probe_trained_on : (M && M.n && M.n.live_probe_trained_on ? `${M.n.live_probe_trained_on} sentences (the fight-class set plus its matched sentences; not stored in the probe file)` : 'not recorded')}`, `shares: softmax(raw × ${T})`, `words alone: ${bl.state}`, ...(info.restored ? [] : inside()), ...condBlock(resp.conditions)]);
+  }
+  const KEEP_FC = PSI.keep('fight-class', { inputs: ['fcText'], render: renderClass, status: 'fcStat' });
   $('fcGo').addEventListener('click', async () => {
     const b = $('fcGo'), text = $('fcText').value.trim();
     if (!text) { PSI.status($('fcStat'), 'Describe a competition first.', 'warn'); $('fcText').focus(); return; }
     b.disabled = true; PSI.status($('fcStat'), 'reading…', 'busy'); PSI.setRunning('fight', true);
     try {
-      const resp = await psi.fight({ text }), r = resp.items[0]; bars($('fcOut'), r);
-      const [t1, t2] = r.scores, T = r.temperature || 4, bl = r.baseline || { state: 'not returned' };
-      const base = bl.state === 'read' ? `Words alone (layer 0) read this sentence as ${bl.top} · ${bl.name} (raw ${sgn(bl.raw)}), ${bl.agrees ? 'the same class as' : 'a different class from'} layer ${r.layer}.`
-        : 'The words-alone reading of this sentence is not stored with this probe (the bundled probe file has no layer-0 probe).';
-      $('fcWhy').textContent = `Read at layer ${r.layer}: ${r.name}, a competitor that models ${r.models}. The bars are softmax(raw × ${T}): a display choice so six numbers read as shares, not probabilities, so no chance line is drawn on them. The measurement is the raw ridge score (fitted to 1 for the right class, 0 for the others): ${t1.class} ${sgn(t1.raw)}, next ${t2.class} ${sgn(t2.raw)}. ${floorText()} ${base} This is the model’s own reading of the kind of fight, not a rule.`;
-      tokens($('fcTokens'), r.tokens, `Each piece’s pull on ${r.top} · ${r.name} at layer ${r.layer}: amber towards it, blue away; the pulls add up to its raw score.`);
-      PSI.cond($('fcWhy'), [r.model || 'model not reported', `layer ${r.layer}`, `probe trained on ${r.probe_trained_on && r.probe_trained_on !== 'not recorded' ? r.probe_trained_on : (M && M.n && M.n.live_probe_trained_on ? `${M.n.live_probe_trained_on} sentences (the fight-class set plus its matched sentences; not stored in the probe file)` : 'not recorded')}`, `shares: softmax(raw × ${T})`, `words alone: ${bl.state}`, ...inside(), ...condBlock(resp.conditions)]);
+      renderClass(await KEEP_FC.call('fight', { text }));
       PSI.status($('fcStat'), ''); EX.mark($('fcStat')); PSI.setDone('fight');
     } catch (e) { err(e); failed($('fcStat'), e); } finally { b.disabled = false; PSI.setRunning('fight', false); }
   });
 
   // ── 2. game the probe ───────────────────────────────────────────────────
   let attempts = [];
+  // The target and the sentence being tried are kept; the attempts table is a scratch log of this visit, so it is not.
+  PSI.keep('fight-game', { inputs: ['fgTarget', 'fgText'], render: () => {} });
   $('fgReset').addEventListener('click', () => { attempts = []; $('fgTable').querySelector('tbody').textContent = ''; PSI.status($('fgStat'), ''); });
   $('fgGo').addEventListener('click', async () => {
     const t = $('fgTarget').value, b = $('fgGo'), text = $('fgText').value.trim();

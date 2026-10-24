@@ -1,6 +1,6 @@
 {
   "name": "parameter-space-inspector",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Parameter Space Inspector: ask questions about how a language model works and settle them by measuring a GGUF model on your own computer.",
   "main": "src/main.js",
   "license": "Apache-2.0",

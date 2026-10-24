@@ -15,7 +15,7 @@
     }
     return r.value;
   };
-  const NAMES = ['readHead', 'readAll', 'pickModel', 'pickControlVector', 'settings', 'start', 'stop', 'tokenize', 'detokenize', 'next', 'complete', 'score', 'template', 'engineState', 'trace', 'traceStatus', 'embed', 'represent', 'idle', 'quiet', 'scoreText', 'ablate', 'understand', 'ckptList', 'ckptAsk', 'ckptTest', 'heads', 'ablateHeads', 'lesion', 'sense', 'fight', 'connector', 'setKey', 'listModels', 'external', 'traceRestart', 'anatomy', 'mcp', 'neuronNames', 'setupCheck', 'ckptCount', 'lineage', 'ladder', 'gpu', 'convert', 'convertStatus', 'experiments', 'jobs', 'sae', 'vectors', 'timeline', 'commons', 'chatgpt', 'hf'];
+  const NAMES = ['readHead', 'readAll', 'pickModel', 'pickControlVector', 'settings', 'start', 'stop', 'tokenize', 'detokenize', 'next', 'complete', 'score', 'template', 'engineState', 'trace', 'traceStatus', 'embed', 'represent', 'idle', 'quiet', 'scoreText', 'ablate', 'understand', 'ckptList', 'ckptAsk', 'ckptTest', 'heads', 'ablateHeads', 'lesion', 'sense', 'fight', 'connector', 'setKey', 'listModels', 'external', 'traceRestart', 'anatomy', 'mcp', 'neuronNames', 'setupCheck', 'ckptCount', 'lineage', 'ladder', 'gpu', 'convert', 'convertStatus', 'experiments', 'jobs', 'sae', 'vectors', 'override', 'context', 'attractor', 'timeline', 'commons', 'chatgpt', 'hf', 'update', 'session', 'measure'];
   const api = Object.fromEntries(NAMES.map((n) => [n, (...a) => call(n, ...a)]));
   const listeners = { log: [], progress: [] };
   api.on = (channel, fn) => { (listeners[channel] || []).push(fn); return () => {}; };

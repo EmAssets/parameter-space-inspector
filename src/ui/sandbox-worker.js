@@ -108,6 +108,9 @@
   // A linear probe: logistic regression (L2), scored by stratified k-fold cross-validation. labels: any two or more values.
   function probe(X, labels, { folds = 5, l2 = 1e-2, epochs = 300, lr = 0.1, permutations = 0, seed = 1 } = {}) {
     const n = X.length, cls = [...new Set(labels)]; if (n < 4 || cls.length < 2) return { accuracy: null, note: 'a probe needs at least 4 examples of at least 2 kinds' };
+    // Each example must be a vector: a scalar per example gives a meaningless 50% (seen: rows of `data` passed instead of `vectors`).
+    const bad = X.findIndex((x) => !(Array.isArray(x) || ArrayBuffer.isView(x)) || !x.length || x.length !== X[0].length || Array.prototype.some.call(x, (v) => typeof v !== 'number' || !Number.isFinite(v)));
+    if (bad >= 0) throw new Error(`probe: example ${bad} is not a vector of numbers like the others (${Array.isArray(X[bad]) || ArrayBuffer.isView(X[bad]) ? `length ${X[bad].length}` : typeof X[bad]}). For a Layer vectors experiment pass vectors.map(v => v.layers[l]), not rows of data.`);
     const d = X[0].length, y = labels.map((l) => cls.indexOf(l));
     const fit = (idx) => {   // one-vs-rest weights, features standardized on the training part
       const mu = new Array(d).fill(0), sg = new Array(d).fill(0); for (const i of idx) for (let j = 0; j < d; j++) mu[j] += X[i][j] / idx.length;

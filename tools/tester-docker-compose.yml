@@ -1,0 +1,18 @@
+# The tester model in a container: full isolation from the model under test, on the same port as tools/tester-model.sh
+# (127.0.0.1:11435), so PSI's local/tester/<model> works unchanged. Run one or the other, not both.
+# On a Mac, Docker has no access to the Metal GPU: the tester runs on the CPU, several times slower than the native one.
+#   docker compose -f tools/tester-docker-compose.yml up -d
+#   docker compose -f tools/tester-docker-compose.yml exec tester ollama pull llama3.1:8b
+services:
+  tester:
+    image: ollama/ollama:0.40.8   # pinned: a release tested with PSI; raise it deliberately
+    container_name: psi-tester
+    ports:
+      - "127.0.0.1:11435:11434"   # this computer only
+    volumes:
+      - psi_tester_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m
+    restart: unless-stopped
+volumes:
+  psi_tester_models:
