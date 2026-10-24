@@ -224,6 +224,10 @@ nothing is spent (no cap, no spending permission for agents), and PSI refuses it
 container instead, `docker compose -f tools/tester-docker-compose.yml up -d` runs the tester on the same port; on a Mac
 Docker has no access to the Metal GPU, so it runs on the CPU.
 
+## What changed
+
+[CHANGELOG.md](CHANGELOG.md): what each release changed in the app, for agents over MCP, and in the manual.
+
 ## What leaves your computer
 
 Nothing, unless you use an optional feature:
