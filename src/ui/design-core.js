@@ -130,7 +130,7 @@
       read: (r) => ({ text: r.answer, set: wordSet(r.answer), metrics: { words: (String(r.answer).match(/\S+/g) || []).length } }), primary: 'words', unit: 'words' },
     odds: { tool: 'next_token_odds', need: 'model', what: 'how torn the local model is about the next piece after the text (entropy) and its top guesses', view: null,
       args: (it) => ({ text: it.text, k: 20 }),
-      read: (r) => ({ text: (r.top || []).slice(0, 3).map((x) => `“${show(x.piece)}” ${(x.p * 100).toFixed(0)}%`).join(' · '), metrics: { entropy_bits: r.entropy, top_p: r.top && r.top[0] ? r.top[0].p : null }, atLeast: r.entropy_is_lower_bound ? ['entropy_bits'] : [] }),
+      read: (r) => ({ text: r.unreported ? `“${show((r.top[0] || {}).piece)}”: odds not reported (a piece of a character)` : (r.top || []).slice(0, 3).map((x) => `“${show(x.piece)}” ${(x.p * 100).toFixed(0)}%`).join(' · '), metrics: { entropy_bits: r.entropy, top_p: r.top && r.top[0] ? r.top[0].p : null }, atLeast: r.entropy_is_lower_bound ? ['entropy_bits'] : [] }),
       primary: 'entropy_bits', unit: 'bits of entropy' },
     tokens: { tool: 'tokenize', need: 'model', what: 'how many pieces the model splits the text into', view: 'tokens', fields: [['tokText', (it) => it.text]], press: 'tokGo',
       args: (it) => ({ text: it.text }),
@@ -226,7 +226,7 @@
     const toks = await ctx.eng('tokenize', text, false);
     if (toks.length < 2) throw new Error(`“${text.slice(0, 40)}” is one piece: nothing to measure`);
     const sc = await ctx.eng('score', toks.map((t) => t.id), 20);
-    return { text, first: toks[0].piece, model: ctx.localModel ? ctx.localModel() : null, pieces: sc.map((x, i) => ({ piece: toks[i + 1].piece, surprise: x.p ? -Math.log2(x.p) : null, floor: x.top.length ? -Math.log2(x.top[x.top.length - 1].p) : null, rank: x.rank == null ? null : x.rank })) };
+    return { text, first: toks[0].piece, model: ctx.localModel ? ctx.localModel() : null, pieces: sc.map((x, i) => ({ piece: toks[i + 1].piece, unreported: !!x.unreported, surprise: x.p ? -Math.log2(x.p) : null, floor: x.top.length ? -Math.log2(x.top[x.top.length - 1].p) : null, rank: x.rank == null ? null : x.rank })) };
   }
   // One prompt of a plan, with whichever instrument the plan names.
   const runItem = (plan, it, ctx) => (TOOLS[plan.instrument] ? runTool(plan, it, ctx) : plan.instrument === 'read' ? readScore(it.text, ctx) : ctx.eng('trace', it.text, { n_new: plan.answer_tokens, lens: plan.framing }));

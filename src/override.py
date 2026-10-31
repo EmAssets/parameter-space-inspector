@@ -282,7 +282,7 @@ class OverrideMap:
             flag = None
             if followed:
                 where = f" Its own answer led the claim at layers {lead[0]}–{lead[-1]}" if lead else " Your claim led at every middle layer"
-                flag = {"kind": "followed", "text": f"It followed your claim.{where}; on held-out tests that did not tell whether its own answer was right."}
+                flag = {"kind": "followed", "text": f"It followed your claim.{where}. On held-out tests, which answer led there did not tell whether its own answer was right."}
             same = claim_id == own["first_id"]
             for x in (own, push): x.pop("first_id", None)
             return {"mode": "pushback", "prompt": prompt, "claim": claim, "own": own, "own_risk": own_risk, "push": push,

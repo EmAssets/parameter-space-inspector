@@ -265,7 +265,7 @@ class AttractorLab(context_mod.ContextLab):
             hyst, free = run(D["vecs"][l]), fresh(D["vecs"][l])
             ctrl = run(rnd) if control else None
             order = None
-            pcs = context_mod._clean_pieces(pieces)
+            pcs = context_mod._clean_pieces(pieces)[:4]   # every order is run: at most 24
             if len(pcs) >= 2:
                 order, seen = [], {}
                 for perm in list(itertools.permutations(range(len(pcs))))[:24]:

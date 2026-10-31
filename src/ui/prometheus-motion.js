@@ -15,7 +15,8 @@
 (() => {
   'use strict';
   const RM = matchMedia('(prefers-reduced-motion: reduce)');
-  const reduced = () => RM.matches;
+  // No motion when the system asks for none, and none when nobody can see it: a hidden page gets no animation frames.
+  const reduced = () => RM.matches || document.hidden;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let SPEED = 1;   // 1 normal; larger is slower (the experiment tour's “Slower” button): travel and typing stretch by it
   const NS = 'http://www.w3.org/2000/svg';
@@ -106,7 +107,7 @@
         { const L2 = trail.getTotalLength(); trail.style.strokeDasharray = `${L2}`; trail.style.strokeDashoffset = `${L2 * (1 - Math.min(1, e))}`; }
         if (p < 1) requestAnimationFrame(tick); else res();
       };
-      requestAnimationFrame(tick);
+      requestAnimationFrame(tick); setTimeout(res, dur + 400);   // frames pause in a background page: never wait forever
     });
     dot.animate([{ transform: dot.style.transform }, { transform: `translate(${b.x}px, ${b.y}px) scale(2.4)`, opacity: 0 }], { duration: 260, easing: 'ease-out' }).finished.then(() => { dot.classList.remove('on'); dot.style.transform = ''; });
     trail.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, delay: 120, easing: 'ease-out' }).finished.then(() => trail.remove());
@@ -230,7 +231,8 @@
   // View change with a cross-fade (View Transitions where the engine has them).
   async function switchView(btn) {
     if (!btn) return; if (reduced() || !document.startViewTransition) { btn.click(); return; }
-    const t = document.startViewTransition(() => btn.click()); try { await t.finished; } catch (_) { /* interrupted */ }
+    // The transition's promise can stall in a background or embedded window; the view has switched either way.
+    const t = document.startViewTransition(() => btn.click()); try { await Promise.race([t.finished, new Promise((r) => setTimeout(r, 1500))]); } catch (_) { /* interrupted */ }
   }
 
   window.PMotion = { card, travel, typeInto, pressDown, busy, watch, reveal, link, ring, switchView, scrollInto, spring, reduced, setSpeed: (f) => { SPEED = Math.max(0.5, Math.min(4, +f || 1)); }, speed: () => SPEED };

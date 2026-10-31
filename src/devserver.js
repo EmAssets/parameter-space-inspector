@@ -14,6 +14,7 @@
  * the served index.html as <meta name="psi-token"> for psi-web.js.
  */
 'use strict';
+require('./net-guard');   // Node 24.22.1's fetch can crash the process on a torn-down socket (see net-guard.js)
 const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -155,6 +156,10 @@ api.quiet = async (name, ...a) => IDLE.quiet(name, ...a);
 IDLE.wrap(api);
 const LADDER = createLadder({ config, picked: new Set(), send: null });
 const MCP = createMcp({ call: (n, ...a) => api[n](...a), config, records: RECORDS });
+// Hybrid models (beta, src/hybrid-api.js): the base with a judge, served to other applications on this computer through an
+// OpenAI-compatible endpoint on its own port with its own token; every request kept for the dashboard.
+const HYBRID = require('./hybrid-api.js').createHybrid({ config, call: (n, ...a) => api[n](...a), dataDir: config.DATA, log: (m) => { remember('hybrid', m); console.log('[hybrid]', m); } });
+api.hybrid = async (a) => HYBRID.call(a || {});
 // The job runner (src/jobs.js): a plan sent from a phone runs here and carries on when the phone locks. Through
 // POST /psi/jobs (with the token) it is also the API for scripts: {action: 'submit', plan}, then 'get' until done.
 const JOBS = require('./jobs.js').createJobs({ dataDir: config.DATA, call: (n, ...a) => api[n](...a), mcp: (rpc) => MCP.handle(rpc, { caller: 'app' }), experiments: EXPERIMENTS, config,
@@ -228,4 +233,4 @@ http.createServer(async (req, res) => {
   res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
   res.end(data);
 }).listen(PORT, '127.0.0.1', () => console.log(`Parameter Space Inspector (dev) at http://127.0.0.1:${PORT}  model ${config.settings.lastModel || '(none chosen yet: Settings > Models)'}\nMCP: POST http://127.0.0.1:${PORT}/mcp with header  Authorization: Bearer ${MCP_TOKEN}  (this token opens /mcp only; set PSI_MCP_TOKEN to fix it)`));
-process.on('SIGINT', async () => { await engine.stop(); await tracer.stop(); process.exit(0); });
+process.on('SIGINT', async () => { HYBRID.stop(); await engine.stop(); await tracer.stop(); process.exit(0); });

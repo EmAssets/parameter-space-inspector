@@ -37,7 +37,7 @@ window.PSIPaths = (() => {
     return out;
   }
   // The first real fork: the earliest step whose top choice was under `p`.
-  const firstFork = (steps, p = 0.6) => steps.findIndex((s) => s.top[0].p < p);
+  const firstFork = (steps, p = 0.6) => steps.findIndex((s) => !s.unreported && s.top[0].p != null && s.top[0].p < p);   // a step without odds is no fork
 
   // A literal "E8" in the text counts as three votes; with the lens on the model is told to write them, so a reading
   // with noE: true (words only) is reported beside it. `votes` is the evidence behind the reading, `eMentions` how many
@@ -67,10 +67,11 @@ window.PSIPaths = (() => {
     if (!hits.length) return null;
     const best = hits.sort((a, b) => b.at.length - a.at.length)[0];
     const from = best.at[1];                                             // the rut starts at the first repeat
-    const mean = (xs) => (xs.length ? xs.reduce((a, s) => a + s.entropy, 0) / xs.length : null);
+    // Steps without odds (a piece of a character: no doubt reported) are left out of the averages, and counted.
+    const mean = (xs) => { const k = xs.filter((s) => s.entropy != null); return k.length ? k.reduce((a, s) => a + s.entropy, 0) / k.length : null; };
     // Doubt per step is a lower bound where the choices read did not cover the odds, so both averages are "at least".
     const after = mean(steps.slice(from)), before = mean(steps.slice(0, from));
-    return { text: best.text, repeats: best.at.length, from, entropyAfter: +after.toFixed(2), entropyBefore: before == null ? null : +before.toFixed(2), nBefore: from,
+    return { text: best.text, repeats: best.at.length, from, entropyAfter: after == null ? null : +after.toFixed(2), unknown: steps.filter((s) => s.entropy == null).length, entropyBefore: before == null ? null : +before.toFixed(2), nBefore: from,
       lowerBound: steps.some((s) => s.exact === false || (s.exact == null && 1 - (s.covered == null ? 1 : s.covered) > 0.02)),
       mark: new Set(best.at.flatMap((i) => Array.from({ length: n }, (_, k) => i + k))) };
   }

@@ -189,12 +189,14 @@ async function sameModel({ engine, tracer, config }) {
       const b = await tracer.nextTop(text, 5);
       const ia = a.map((t) => t.id), ib = b.ids || [];
       const na = await engine.next(ia, 5);
+      if (na.unreported) continue;   // no odds at that position (a piece of a character): no overlap to read
       const ta = new Set(na.top.map((t) => t.id)), tb = new Set((b.top || []).map((t) => t.id));
       const overlap = [...ta].filter((id) => tb.has(id)).length / Math.max(1, Math.min(5, ta.size, tb.size));
       per.push({ text, chat_template: text === chat, ids_equal: ia.length === ib.length && ia.every((x, i) => x === ib[i]), local_ids: ia.length, inside_ids: ib.length,
         top5_overlap: +overlap.toFixed(2), local_top: na.top.map((t) => t.piece), inside_top: (b.top || []).map((t) => t.piece) });
     }
   } catch (e) { return { checked: false, reason: `the check failed: ${e.message}`, gguf, modelDir: (st.conditions && st.conditions.model_dir) || modelDir, last }; }
+  if (!per.length) return { checked: false, reason: 'no probe text could be compared (the local engine reported no odds after any of them)', gguf, modelDir: (st.conditions && st.conditions.model_dir) || modelDir, last };
   const rec = { date: new Date().toISOString(), ids_equal: per.every((x) => x.ids_equal), top5_overlap: +(per.reduce((a, x) => a + x.top5_overlap, 0) / per.length).toFixed(2),
     gguf, modelDir: (st.conditions && st.conditions.model_dir ? String(st.conditions.model_dir).replace(/\\/g, '/') : modelDir) };
   if (config) config.update({ trace: { pairs: { ...((config.settings.trace && config.settings.trace.pairs) || {}), [gguf]: rec } } });

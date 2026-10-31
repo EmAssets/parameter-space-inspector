@@ -50,6 +50,13 @@
   const svgClear = (s) => { while (s.firstChild) s.removeChild(s.firstChild); return s; };
   const add = (s, t, a, txt) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; s.appendChild(e); return e; };
   const label = (s, x, y, txt, anchor = 'start', fill = INK2) => add(s, 'text', { x, y, 'font-size': 11, fill, 'text-anchor': anchor, 'font-family': 'IBM Plex Mono, monospace' }, txt);
+  // The charts' viewBox is 680 wide and stretches with the window, which scaled their labels to ~19px on a wide
+  // screen. Each text keeps its drawn size on screen instead (11 units = 11px), whatever width the plot is shown at.
+  const fit = (svg) => {
+    const w = svg.getBoundingClientRect().width; if (!w) return; const k = (svg.viewBox.baseVal.width || 680) / w;
+    svg.querySelectorAll('text').forEach((t) => { if (!t.dataset.fs) t.dataset.fs = t.getAttribute('font-size') || 11; t.setAttribute('font-size', (+t.dataset.fs * k).toFixed(2)); });
+  };
+  ['atTower', 'atFunnelSvg', 'atLoop', 'atCSvg'].forEach((id) => { const svg = $(id); if (!svg) return; new ResizeObserver(() => fit(svg)).observe(svg); new MutationObserver(() => fit(svg)).observe(svg, { childList: true }); });
   const path = (pts) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('');
   const axes = (s, x0, y0, x1, y1) => { add(s, 'line', { x1: x0, y1, x2: x1, y2: y1, stroke: RULE }); add(s, 'line', { x1: x0, y1: y0, x2: x0, y2: y1, stroke: RULE }); };
   async function busy(btn, stat, fn) {
@@ -71,8 +78,9 @@
       add(s, 'rect', { x: x + 1, y: y1 - h, width: Math.max(1, w - 2), height: h, rx: 1, fill: p.layer === r.layer ? ACC : p.heldout_accuracy >= 0.9 ? 'rgba(255,195,107,.45)' : 'rgba(255,195,107,.18)' });
     });
     add(s, 'path', { d: path(r.per_layer.map((p) => [x0 + (p.layer - 0.5) * w, y1 - (p.random_effect / mx) * (y1 - y0)])), fill: 'none', stroke: GREY, 'stroke-width': 1, 'stroke-dasharray': '3 3' });
+    label(s, x0 - 4, y0 + 4, mx.toFixed(1), 'end'); label(s, x0 - 4, (y0 + y1) / 2 + 4, (mx / 2).toFixed(1), 'end'); label(s, x0 - 4, y1 + 4, '0', 'end');   // the effect-size scale
     label(s, x0, 138, 'layer 1'); label(s, x1, 138, `layer ${L}`, 'end'); label(s, x0 + (r.layer - 0.5) * w, y0 - 2, `chosen ${r.layer}`, 'middle', ACC);
-    label(s, x0 + 70, 138, 'bars: held-out effect size (faint: accuracy < 90%) · dashed: random direction');
+    label(s, (x0 + x1) / 2, 138, 'bars: held-out effect (faint: accuracy < 90%) · dashed: random direction', 'middle');
   }
   function heat(r) {
     const box = $('atHeat'); box.textContent = '';
@@ -82,7 +90,8 @@
       c.style.background = v >= 0 ? `rgba(255,195,107,${(0.05 + a * 0.9).toFixed(2)})` : `rgba(127,184,255,${(0.05 + a * 0.9).toFixed(2)})`;
       c.title = `layer ${l + 1} · ${JSON.stringify(r.tokens[j] || '')} · ${f2(v)}`; g.appendChild(c);
     });
-    r.tokens.forEach((t) => { const d = document.createElement('div'); d.className = 't'; d.textContent = t.trim() || '·'; d.title = t; g.appendChild(d); });
+    // Labels run vertically (no collisions however narrow the columns); the chat template's own pieces are drawn faint.
+    r.tokens.forEach((t) => { const d = document.createElement('div'); d.className = /^(<\|[a-z_]+\|>|<\/?think>|user|assistant|system|\s*)$/.test(t) ? 't tmpl' : 't'; d.textContent = t.trim() || '·'; d.title = t; g.appendChild(d); });
     box.appendChild(g);
     const p = document.createElement('p'); p.className = 'small muted';
     p.textContent = `Rows: layers ${r.grid.length} (top) to 1. Warm: toward “${r.name}”, cool: toward the contrasting side. The direction is read at its own layer’s scale.`;
@@ -149,6 +158,12 @@
     v.innerHTML = '';
     const say = (html) => { const p = document.createElement('span'); p.innerHTML = html; v.appendChild(p); v.appendChild(document.createElement('br')); };
     const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    // The headline numbers as stat cells above the sentence (built from text nodes, no HTML)
+    const stats = $('atPStats'); stats.textContent = '';
+    const cell = (num, lab, warm) => { const c = document.createElement('div'); c.className = 'at-stat'; const n = document.createElement('div'); n.className = warm ? 'at-num warm' : 'at-num'; n.textContent = num; const l = document.createElement('div'); l.className = 'at-lab'; l.textContent = lab; c.append(n, l); stats.appendChild(c); };
+    if (r.locked) cell(f2(r.lock_value), `locked in: share of “${r.target}” after the first turn`, true); else cell(f2(r.loop_width), 'loop width: how far the way up and the way down disagree', true);
+    cell(f2(r.memory_vs_fresh), 'memory against fresh conversations');
+    if (r.control) cell(r.control.locked ? f2(r.control.lock_value) : f2(r.control.loop_width), r.control.locked ? 'random direction: also locked (control)' : 'loop width for a random direction (control)');
     if (r.locked) say(`<b>Locked in.</b> After the first turn the conversation stayed at ${f2(r.lock_value)} for “${esc(r.target)}”, though fresh conversations at the same strengths range over ${f2(r.fresh_range)}: its own history became an absorbing state.`);
     else say(`<b>Loop width ${f2(r.loop_width)}</b>: the same strength gives a different answer on the way up and on the way down.`);
     say(`Memory against fresh conversations: <b>${f2(r.memory_vs_fresh)}</b>. Random direction: ${r.control ? (r.control.locked ? `also locked at ${f2(r.control.lock_value)}` : `loop width ${f2(r.control.loop_width)}`) : 'not run'}${r.control && (r.control.locked && r.locked ? Math.abs(r.control.lock_value - r.lock_value) < 0.1 : !r.control.locked && !r.locked && Math.abs(r.control.loop_width - r.loop_width) < 0.05) ? ' (about the same, so this is history, not the concept)' : ''}.`);
@@ -156,12 +171,14 @@
     if (r.order) {
       const h = document.createElement('p'); h.className = 'small'; h.textContent = `Order of the context pieces: spread ${f2(r.order.spread)} in the share of “${r.target}” across ${r.order.orders.length} orders (${r.order.distinct} distinct papers: a system piece and a how-to-answer piece keep their place)${r.order.distinct < 2 ? ': the order was not varied.' : r.order.spread < 0.05 ? ': order alone hardly matters here.' : '.'}`; box.appendChild(h);
       const g = document.createElement('div'); g.className = 'at-order';
+      const flat = r.order.distinct >= 2 && r.order.spread < 0.05;   // nothing to see in the rows: one sentence, rows behind a toggle
       r.order.orders.forEach((q) => {
         const a = document.createElement('span'); a.textContent = q.order.map((i) => r.order.pieces[i].role).join(' → ');
         const b = document.createElement('div'); b.className = 'bar'; b.style.width = `${Math.max(1, q.share * 100)}%`;
         const c = document.createElement('span'); c.textContent = f2(q.share); g.append(a, b, c);
       });
-      box.appendChild(g);
+      if (flat) { const d = document.createElement('details'); const sm = document.createElement('summary'); sm.textContent = `the ${r.order.orders.length} orders`; d.append(sm, g); box.appendChild(d); }
+      else box.appendChild(g);
     }
   }));
 

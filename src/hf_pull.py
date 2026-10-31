@@ -211,7 +211,22 @@ def ckpt(repo, step, root):
     rev = revs[step]; i = info(repo, rev)
     if not i["folder"]: raise ValueError(f"{repo} at {rev} has no safetensors weights")
     dest = os.path.join(root, f"step{step}")
-    if os.path.exists(os.path.join(dest, "config.json")): return {"repo": repo, "step": step, "dest": dest.replace("\\", "/"), "already": True}
+    if os.path.exists(os.path.join(dest, "config.json")):
+        # One folder holds one size: a step already there from another repo is not this one (it would load the wrong model).
+        try:
+            with open(os.path.join(dest, "hf-source.json"), encoding="utf-8") as fh: had = json.load(fh).get("repo")
+        except Exception: had = None
+        if isinstance(had, str) and had and had.lower() != repo.lower(): raise ValueError(f"{dest} is step {step} of {had}, not {repo}: set the training checkpoints folder to one for {repo} (Settings)")
+        if not isinstance(had, str):   # copied in by hand (no hf-source.json): is it this model's shape?
+            from huggingface_hub import hf_hub_download
+            shape = ("model_type", "hidden_size", "num_hidden_layers", "num_attention_heads", "vocab_size")
+            try:
+                with open(os.path.join(dest, "config.json"), encoding="utf-8") as fh: mine = json.load(fh)
+                with open(hf_hub_download(repo_arg(repo), "config.json", revision=rev, token=os.environ.get("PSI_HF_TOKEN") or None), encoding="utf-8") as fh: theirs = json.load(fh)
+            except Exception as e: raise ValueError(f"{dest} already holds a step {step} that was copied in by hand, and its config could not be compared with {repo}'s ({e}); move it or choose another folder")
+            diff = [k for k in shape if mine.get(k) != theirs.get(k)]
+            if diff: raise ValueError(f"{dest} already holds a step {step} of another model ({', '.join(f'{k} {mine.get(k)} here, {theirs.get(k)} in {repo}' for k in diff)}): set the training checkpoints folder to one for {repo} (Settings)")
+        return {"repo": repo, "step": step, "dest": dest.replace("\\", "/"), "already": True}
     r = get(repo, dest, i["folder"]["files"], rev)
     return {**r, "step": step, "revision": rev, "dest": dest.replace("\\", "/")}
 

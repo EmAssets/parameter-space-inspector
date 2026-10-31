@@ -72,7 +72,7 @@ The next question tests exactly that, with the rule fixed in advance: can one me
 
 ## Requirements
 
-- **Node 22.12+** (Electron 44 needs it) and npm.
+- **Node 22.23.4+, 24.22.1+ or 26.12.1+** (the releases of 20 October 2026 that fix the Brotli flaw CVE-2026-111497, "Node2Shell"; 23.x and 25.x are end of life and never got the fix) and npm.
 - **llama.cpp**: a [release](https://github.com/ggml-org/llama.cpp/releases) with `llama-server`
   (the CUDA build for NVIDIA cards).
 - **A GGUF model.** None is included. Built on Qwen3-4B (Apache-2.0):
@@ -121,7 +121,7 @@ need to change your PATH. Open only GGUF files you trust: llama.cpp parses them 
 
 ### 3. By hand, step by step
 
-1. Install **Node.js 22.12+** and **git**. No administrator rights? The nodejs.org `.tar.gz` (macOS, Linux) or `.zip`
+1. Install **Node.js 22.23.4+, 24.22.1+ or 26.12.1+** and **git**. No administrator rights? The nodejs.org `.tar.gz` (macOS, Linux) or `.zip`
    (Windows) unpacked into your home folder works; add its `bin` folder to the PATH for that terminal.
 2. Download **llama.cpp** from its [releases](https://github.com/ggml-org/llama.cpp/releases): the newest release named
    b&lt;number&gt; (marked Pre-release; the one marked Latest may have no downloads), the asset for your system and GPU:

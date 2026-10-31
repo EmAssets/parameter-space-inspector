@@ -9,7 +9,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const el = (t, c, txt) => { const e = document.createElement(t); if (c) e.className = c; if (txt != null) e.textContent = txt; return e; };
-  const VIEWS = { generate: 'Generate', neural: 'Neural net', read: 'Read', tokens: 'Tokens', compare: 'Lens on / off', understand: 'Understanding', emergence: 'Emergence', lesion: 'Tipping point', sensing: 'Sensing surface', fight: 'Fight class', connectors: 'Connectors', ladder: 'Storage ladder', anatomy: 'Anatomy', file: 'File', lineage: 'Seed & lineage', settings: 'Settings' };
+  const VIEWS = { generate: 'Generate', neural: 'Neural net', read: 'Read', tokens: 'Tokens', compare: 'Lens on / off', understand: 'Understanding', emergence: 'Emergence', lesion: 'Tipping point', sensing: 'Sensing surface', fight: 'Fight class', connectors: 'Connectors', ladder: 'Storage ladder', anatomy: 'Anatomy', file: 'File', lineage: 'Seed & lineage', hybrid: 'Hybrid models', settings: 'Settings' };
   const HAS_PSI = () => !!(window.psi && typeof window.psi.external === 'function' && typeof window.psi.settings === 'function');
   let CFG = { on: false, model: 'anthropic/claude-haiku-4.5', maxTokens: 1500 }, keySet = false, spent = null, cap = null;
   let MSGS = [], busy = false, stopReq = false, cost = 0, unpriced = 0;

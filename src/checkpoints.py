@@ -1,6 +1,6 @@
 """
-Training checkpoints, live: load any saved step of a model whose training was recorded
-(Pythia-410m-deduped, 21 steps on disk) and let the user perform the measurements from the
+Training checkpoints, live: load any saved step of a Pythia model of any size (the folder set in Settings; the recorded
+study is 410m-deduped, 21 steps on disk) and let the user perform the measurements from the
 "Where Understanding Begins" study on their own prompts.
 
   ask(step, prompt, text)  -> what the model at that step writes next; its induction score; the
@@ -12,7 +12,7 @@ Models are fp32, ~1.6 GB; one is cached at a time.
 Also the shared copying protocol (COPY_PROTOCOL, repeat_sequences: used here, by the inside engine's head scan and
 knock-out, and by the Tipping-point scorecard) and the untrained twin of the inside engine's model (untrained_twin).
 """
-import math, os, threading, time
+import json, math, os, threading, time
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -87,6 +87,19 @@ def untrained_twin(tracer, alias=None):
     return _TWIN[key]
 
 
+def complete(f):
+    """A safetensors file is whole when its length is the 8-byte header size, the header, and the data the header's
+    last tensor ends at. Reads the header only."""
+    try:
+        with open(f, "rb") as fh:
+            n = int.from_bytes(fh.read(8), "little")
+            if not 2 <= n <= 100 << 20: return False
+            h = json.loads(fh.read(n))
+        end = max((v["data_offsets"][1] for k, v in h.items() if k != "__metadata__"), default=0)
+        return end > 0 and os.path.getsize(f) == 8 + n + end   # a file with no tensors holds no weights
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError, RecursionError): return False
+
+
 class Checkpoints:
     def __init__(self, root=ROOT, device=None):
         self.root = root
@@ -95,13 +108,21 @@ class Checkpoints:
         self.scan()
 
     def scan(self):
-        """The steps on disk: step<N> folders with complete weights (the full 410m size, or fetched whole from Hugging Face:
-        hf-source.json is written only after every file was checked). Read again on each listing, so a step fetched while
-        the engine runs is seen."""
+        """The steps on disk: step<N> folders with a config and complete weights, of any Pythia size: one model.safetensors,
+        or the shards a model.safetensors.index.json names, each as long as its own header says. A copy cut short is left
+        out. Read again on each listing, so a step fetched while the engine runs is seen."""
         def ok(d):
-            f = os.path.join(self.root, d, "model.safetensors")
-            return d[4:].isdigit() and os.path.exists(f) and (os.path.getsize(f) > 1.5e9 or os.path.exists(os.path.join(self.root, d, "hf-source.json")))
-        self.steps = sorted(int(d[4:]) for d in os.listdir(self.root) if d.startswith("step") and ok(d)) if self.root and os.path.isdir(self.root) else []
+            p = os.path.join(self.root, d)
+            if not (d[4:].isascii() and d[4:].isdigit() and os.path.exists(os.path.join(p, "config.json"))): return False
+            if os.path.exists(os.path.join(p, "model.safetensors")): return complete(os.path.join(p, "model.safetensors"))
+            try:
+                with open(os.path.join(p, "model.safetensors.index.json"), encoding="utf-8") as fh: shards = set(json.load(fh)["weight_map"].values())
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError): return False
+            # a shard is a plain file name in the step folder (no folders, no drive letter)
+            return bool(shards) and all(isinstance(s, str) and s == os.path.basename(s) and not any(c in s for c in "/\\:") and complete(os.path.join(p, s)) for s in shards)
+        try: names = os.listdir(self.root) if self.root and os.path.isdir(self.root) else []
+        except OSError: names = []   # an unreadable folder lists no steps
+        self.steps = sorted(int(d[4:]) for d in names if d.startswith("step") and ok(d))
         return self.steps
 
     def list(self):

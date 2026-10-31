@@ -22,6 +22,11 @@
     timeline: { h: 'What emerged when', sub: 'The order in which capabilities appear during training, in five model sizes; your models placed on the same axis; and a graft lab that puts one model’s layers into another.' },
     features: { h: 'Features', sub: 'What the model’s layers represent, as named features from a sparse autoencoder: see them fire on any text, search them, steer an answer with one, and ask which ones chose the next word.' },
     anatomy: { h: 'Inside the loaded model', sub: 'Its real layers, heads, neurons and the links between them, drawn from the weights; then a recorded forward pass you can play, pause and scrub, from reading the prompt to writing each token.' },
+    // The four labs: the nav's question as the heading, one plain line under it, the long intro behind "How it works".
+    context: { h: 'What did each piece of the prompt do?', sub: 'The model stays fixed. You change the context around a question, and every combination of the pieces is read, so you can see what each one moved.', how: true },
+    attractor: { h: 'Where does the model lock in, and what holds it there?', sub: 'Teach the app a concept from two lists of contrasting sentences, then push the model towards it or away from it and watch where its answer gives way. Every measure runs beside a random push of the same size.', how: true },
+    override: { h: 'Was the answer formed inside, or made up?', sub: 'Before the model writes a word, a probe reads its inner state. Push back with a claim to see whether its own answer still leads inside.', how: true },
+    hybrid: { h: 'A judge at the forks', sub: 'The loaded model (the base) writes. A second model (the judge) can pick among its likeliest next pieces, answer instead, or stay out of the way; gates decide which, per request. Nothing inside the base changes.', how: true },
   };
   const EXPS = {
     understand: { t: 'Understanding', essay: 'Where Understanding Begins', q: 'Does the model understand, or only sound right?' },
@@ -55,7 +60,10 @@
       set(window.PSIModelMeta); document.addEventListener('psi-model-meta', (e) => set(e.detail));
     }
     sec.insertBefore(head, sec.firstChild);
-    const first = head.nextElementSibling; if (first && first.matches('p.muted') && first.textContent.length < 400) first.classList.add('hidden');   // the old one-line intro, now the subtitle
+    const first = head.nextElementSibling;
+    if (v.how && first && first.matches('p.muted')) {   // a long intro: kept, one click away
+      const d = el('details', 'view-how'); d.appendChild(el('summary', null, 'How it works')); first.replaceWith(d); first.classList.remove('muted'); d.appendChild(first);
+    } else if (first && first.matches('p.muted') && first.textContent.length < 400) first.classList.add('hidden');   // the old one-line intro, now the subtitle
   });
   Object.entries(EXPS).forEach(([id, x]) => {
     const sec = $(`tab-${id}`); if (!sec) return;

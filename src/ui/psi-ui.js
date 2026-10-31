@@ -163,13 +163,88 @@
     let p = anchor.nextElementSibling; if (!p || !p.classList.contains('cond')) { p = el('p', 'cond'); anchor.after(p); }
     p.textContent = ''; p.appendChild(el('span', 'cond-k', `${lead} `));
     const list = (parts || []).filter(Boolean); p.classList.toggle('cond-changed', list.some((x) => x.chg));
-    list.forEach((x, i) => {
-      if (i) p.append(' · ');
-      const o = typeof x === 'string' ? { t: x } : x, s = o.term ? PSI.term(o.t, o.term) : el('span', null, o.t);
+    // Parts marked { more: true } (paths, hashes, fingerprints) sit behind a "full record" toggle; a home folder in a
+    // path is shown as ~, so a screenshot of the line does not carry the user's name.
+    const home = (t) => String(t).replace(/(^|[\s:])\/(Users|home)\/[^/\s]+/g, '$1~').replace(/(^|[\s:])[A-Za-z]:\\Users\\[^\\\s]+/g, '$1~');
+    const norm = (x) => typeof x === 'string' ? { t: x } : x;
+    const shown = list.map(norm).filter((o) => !o.more), more = list.map(norm).filter((o) => o.more);
+    const put = (host, o, i) => {
+      if (i) host.append(' · ');
+      const t = home(o.t), s = o.term ? PSI.term(t, o.term) : el('span', null, t);
       ['chg', 'frame', 'est', 'warn'].forEach((k) => { if (o[k]) s.classList.add(`cond-${k}`); }); if (o.title) s.title = o.title;
-      p.appendChild(s);
-    });
+      host.appendChild(s);
+    };
+    shown.forEach((o, i) => put(p, o, i));
+    if (more.length) {
+      const rest = el('span', 'cond-more'); rest.hidden = true; more.forEach((o, i) => put(rest, o, i + 1));
+      const b = el('button', 'cond-toggle', 'full record'); b.type = 'button'; b.setAttribute('aria-expanded', 'false');
+      b.addEventListener('click', () => { rest.hidden = !rest.hidden; b.setAttribute('aria-expanded', String(!rest.hidden)); b.textContent = rest.hidden ? 'full record' : 'less'; });
+      p.append(' · '); p.appendChild(b); p.appendChild(rest);
+    }
     return p;
+  };
+  // ── model output, rendered ──────────────────────────────────────────────────────────────────────────────
+  // PSI.md(text): a model's answer as readable text. Built from DOM nodes, never innerHTML, so nothing in the answer
+  // can become markup. Headings (#), bullet and numbered lists, **bold**, *italic*, `code`, and the common TeX a model
+  // writes for maths (\( \), \[ \], $$ $$; \frac, \times, \div, \cdot, \approx, \le, \ge, \neq, \pm, \sqrt, \text,
+  // \boxed) become plain typography. PSI.answer(text, cls) is the same with a "raw" toggle that shows the text as
+  // the model wrote it, so nothing is hidden.
+  const TEX = [[/\\(?:d|t)?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, (_, a, b) => `${/^\w+$/.test(a) ? a : `(${a})`}⁄${/^\w+$/.test(b) ? b : `(${b})`}`],
+    [/\\sqrt\s*\{([^{}]*)\}/g, '√($1)'], [/\\(?:text|textbf|mathrm|mathbf|boxed|operatorname)\s*\{([^{}]*)\}/g, '$1'],
+    [/\\times/g, '×'], [/\\div/g, '÷'], [/\\cdot/g, '·'], [/\\approx/g, '≈'], [/\\le(?:q)?\b/g, '≤'], [/\\ge(?:q)?\b/g, '≥'],
+    [/\\neq/g, '≠'], [/\\pm/g, '±'], [/\\to\b|\\rightarrow/g, '→'], [/\\pi\b/g, 'π'], [/\\%/g, '%'], [/\\[,;!: ]/g, ' '],
+    [/\\left|\\right/g, ''], [/\\[a-zA-Z]+/g, ''], [/[{}]/g, '']];
+  // Structure first, innermost out and until nothing changes (\text inside \frac), then symbols, then leftovers.
+  const tex = (s) => {
+    let t = s, prev;
+    do { prev = t; TEX.slice(0, 3).forEach(([re, to]) => { t = t.replace(re, to); }); } while (t !== prev);
+    TEX.slice(3).forEach(([re, to]) => { t = t.replace(re, to); });
+    return t.replace(/\s+/g, ' ').trim();
+  };
+  const MATH = /\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$|\\\(([\s\S]*?)\\\)/g;
+  function inline(host, text) {
+    if (((text.match(/\*\*/g) || []).length) % 2) { const k = text.lastIndexOf('**'); text = text.slice(0, k) + text.slice(k + 2); }   // an answer cut mid-markup: drop the unmatched **
+    // maths first (its * and _ are not emphasis), then code, bold, italic
+    let last = 0; const parts = [];
+    text.replace(MATH, (m, a, b, c, at) => { parts.push([text.slice(last, at), false]); parts.push([tex(a ?? b ?? c), true]); last = at + m.length; return m; });
+    parts.push([text.slice(last), false]);
+    parts.forEach(([s, isMath]) => {
+      if (isMath) { host.appendChild(el('span', 'md-math', s)); return; }
+      s.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\s\n][^*\n]*\*)/).forEach((tok) => {
+        if (!tok) return;
+        if (/^`[^`]+`$/.test(tok)) host.appendChild(el('code', 'md-code', tok.slice(1, -1)));
+        else if (/^(\*\*|__)[\s\S]+\1$/.test(tok)) host.appendChild(el('strong', null, tok.slice(2, -2)));
+        else if (/^\*[^*][\s\S]*\*$/.test(tok)) host.appendChild(el('em', null, tok.slice(1, -1)));
+        else host.appendChild(document.createTextNode(tok));
+      });
+    });
+  }
+  PSI.md = (text) => {
+    const root = el('div', 'md'); const lines = String(text || '').replace(/\r/g, '').replace(MATH, (m) => m.replace(/\n/g, ' ')).split('\n');
+    let para = null, list = null;
+    const close = () => { para = null; list = null; };
+    lines.forEach((ln) => {
+      const h = /^\s*#{1,6}\s+(.*)$/.exec(ln), ul = /^\s*[-*•]\s+(.*)$/.exec(ln), ol = /^\s*(\d+)[.)]\s+(.*)$/.exec(ln);
+      if (!ln.trim()) { close(); return; }
+      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) { close(); return; }
+      if (h) { close(); const p = el('p', 'md-h'); inline(p, h[1]); root.appendChild(p); return; }
+      if (ul || ol) {
+        const tag = ul ? 'ul' : 'ol';
+        if (!list || list.tagName.toLowerCase() !== tag) { list = el(tag); if (ol) list.start = +ol[1]; root.appendChild(list); para = null; }
+        const li = el('li'); inline(li, ul ? ul[1] : ol[2]); list.appendChild(li); return;
+      }
+      if (/^\s*\\\[|^\s*\$\$/.test(ln) === false && list && /^\s{2,}\S/.test(ln)) { const li = list.lastElementChild; li.append(' '); inline(li, ln.trim()); return; }
+      list = null;
+      if (!para) { para = el('p'); root.appendChild(para); } else para.appendChild(el('br'));
+      inline(para, ln);
+    });
+    return root;
+  };
+  PSI.answer = (text, cls = '') => {
+    const box = el('div', `md-box ${cls}`.trim()); const shown = PSI.md(text); const raw = el('pre', 'md-raw', String(text || '')); raw.hidden = true;
+    const t = el('button', 'md-toggle', 'raw'); t.type = 'button'; t.title = 'show the text exactly as the model wrote it'; t.setAttribute('aria-pressed', 'false');
+    t.addEventListener('click', () => { const r = raw.hidden; raw.hidden = !r; shown.hidden = r; t.textContent = r ? 'rendered' : 'raw'; t.setAttribute('aria-pressed', String(r)); });
+    box.append(t, shown, raw); return box;
   };
   let chip = null;
   function changeChip() {

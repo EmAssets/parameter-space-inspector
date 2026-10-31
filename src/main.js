@@ -6,6 +6,7 @@
  * The window never touches the file system or the network directly.
  */
 'use strict';
+require('./net-guard');   // Node 24.22.1's fetch can crash the process on a torn-down socket (see net-guard.js)
 const { app, BrowserWindow, ipcMain, dialog, shell, session, Notification, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -188,6 +189,8 @@ const SECRETS = require('./secrets.js').createSecrets({ dataDir: config.DATA, sa
 const COMMONS = require('./commons-api.js').createCommons({ config, secrets: SECRETS, log: (m) => { remember('commons', m); win && win.webContents.send('psi:log', `[commons] ${m}`); } });
 config.setSigner(COMMONS.signer);
 handle('commons', async (a) => COMMONS.call(a || {}));
+const HYBRID = require('./hybrid-api.js').createHybrid({ config, call: (n, ...a) => API[n](...a), dataDir: config.DATA, log: (m) => { remember('hybrid', m); win && win.webContents.send('psi:log', `[hybrid] ${m}`); } });
+handle('hybrid', async (a) => HYBRID.call(a || {}));
 // Settings > Hugging Face (src/hf-api.js): the account the app pushes with; same token as Commons.
 const HF = require('./hf-api.js').createHf({ config, secrets: SECRETS, log: (m) => { remember('hf', m); win && win.webContents.send('psi:log', `[hf] ${m}`); } });
 handle('hf', async (a) => HF.call(a || {}));

@@ -42,6 +42,7 @@ Nothing harmful here. Please be kind in your explorations.
     <p class="nav-group">Beta</p>
     <button type="button" data-tab="lineage"><span class="label">Seed &amp; lineage</span><i class="dot"></i></button>
     <button type="button" data-tab="commons"><span class="nav-txt"><span class="label">Commons</span><small class="nav-q">Grow a model together; check anyone’s claims</small></span><i class="dot"></i></button>
+    <button type="button" data-tab="hybrid"><span class="nav-txt"><span class="label">Hybrid models</span><small class="nav-q">A judge at the forks; served to other apps</small></span><i class="dot"></i></button>
     <p class="nav-group">Experiments <span class="nav-meta" id="expMeta">0 of 7 run</span></p>
     <button type="button" data-tab="design"><span class="nav-txt"><span class="label">Experiment designer</span><small class="nav-q">Test your own idea, planned with Prometheus</small></span><i class="dot"></i></button>
     <button type="button" data-tab="lesion" data-exp><span class="nav-txt"><span class="label">Tipping point</span><small class="nav-q">How much can be removed before it fails?</small></span><i class="dot"></i></button>
@@ -149,7 +150,7 @@ Nothing harmful here. Please be kind in your explorations.
     <section class="tab hidden" id="tab-emergence">
       <p class="muted">Intelligence, in this model, is a stack: a frequency table, then a circuit that looks back and copies, then grammar, stored facts, a situation model, abstractions. Here you perform the measurements<span data-em> from <em>Where Understanding Begins</em></span> yourself: ask a recorded model at any step of its training, find the step at which <em>your</em> question was learned, and remove the looking-back circuit from the loaded model<span data-inside></span> to see what dies with it.</p>
 
-      <p class="k">1 · ask the model at a training step (Pythia-410m, its saved checkpoints)</p>
+      <p class="k">1 · ask the model at a training step (the Pythia size in Settings, its saved checkpoints)</p>
       <div class="row wide"><textarea id="emPrompt" rows="2">In the old market there is a stall everyone calls the zorblax. Early each morning the zorblax</textarea></div>
       <div class="row"><input class="grow" type="range" id="emStep" min="0" max="20" value="4"><span class="k m-0 minw-16em" id="emStepLabel"></span></div>
       <div class="row"><button id="emAsk">Ask at this step</button><button class="ghost" id="emCmp">Compare step 512 and 1,000</button><span class="k m-0" id="emStat"></span></div>
@@ -348,16 +349,20 @@ Nothing harmful here. Please be kind in your explorations.
 
 
     <section class="tab hidden" id="tab-context">
-      <p class="muted">The model is fixed; the context is what you change. Write a question and up to four pieces of context, each with a role: a premise to take as true, someone’s claim, an observation, an instruction on how to answer, or the app’s hidden instruction. Every combination of pieces is read through the model’s own chat template, and you see what each piece did: how far it moved the odds, which answer it favoured, whether it only works with another piece, and where in the answer the context stops mattering.</p>
+      <p class="muted">The model is fixed; the context is what you change. Write a question and up to six pieces of context, each with a role: a premise to take as true, someone’s claim, an observation, an instruction on how to answer, the app’s hidden instruction, or an earlier turn of the chat (what the user said and what the assistant replied). Every combination of pieces is read through the model’s own chat template, and you see what each piece did: how far it moved the odds, which answer it favoured, whether it only works with another piece, and where in the answer the context stops mattering.</p>
       <div class="row wide"><textarea id="cxQ" rows="2" aria-label="question">What is the capital of Australia?</textarea></div>
-      <div class="row wide cx-prow"><select id="cxR0" aria-label="role of piece 1"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT0" placeholder="a piece of context, e.g. In this story, the capital of Australia is Sydney." aria-label="piece 1"></div>
-      <div class="row wide cx-prow"><select id="cxR1" aria-label="role of piece 2"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT1" placeholder="another piece (optional)" aria-label="piece 2"></div>
-      <div class="row wide cx-prow"><select id="cxR2" aria-label="role of piece 3"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT2" placeholder="another piece (optional)" aria-label="piece 3"></div>
-      <div class="row wide cx-prow"><select id="cxR3" aria-label="role of piece 4"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option></select><input class="grow" type="text" id="cxT3" placeholder="another piece (optional)" aria-label="piece 4"></div>
-      <div class="row wide"><input class="grow" type="text" id="cxFrame" placeholder="optional: the start of the answer to read the odds after, e.g. The capital of Australia is" aria-label="answer frame"></div>
-      <div class="row wide"><textarea id="cxOpts" rows="2" aria-label="named answers" placeholder="optional: answers to score, one per line; name = phrasing, phrasing (e.g. Canberra)"></textarea></div>
+      <div class="row wide cx-prow"><select id="cxR0" aria-label="role of piece 1"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option><option value="turn">earlier turn</option></select><input class="grow" type="text" id="cxT0" placeholder="a piece of context, e.g. In this story, the capital of Australia is Sydney." aria-label="piece 1"><textarea class="grow cx-reply hidden" rows="1" id="cxA0" placeholder="the assistant’s reply in that turn" aria-label="reply in piece 1"></textarea></div>
+      <div class="row wide cx-prow"><select id="cxR1" aria-label="role of piece 2"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option><option value="turn">earlier turn</option></select><input class="grow" type="text" id="cxT1" placeholder="another piece (optional)" aria-label="piece 2"><textarea class="grow cx-reply hidden" rows="1" id="cxA1" placeholder="the assistant’s reply in that turn" aria-label="reply in piece 2"></textarea></div>
+      <div class="row wide cx-prow"><select id="cxR2" aria-label="role of piece 3"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option><option value="turn">earlier turn</option></select><input class="grow" type="text" id="cxT2" placeholder="another piece (optional)" aria-label="piece 3"><textarea class="grow cx-reply hidden" rows="1" id="cxA2" placeholder="the assistant’s reply in that turn" aria-label="reply in piece 3"></textarea></div>
+      <div class="row wide cx-prow"><select id="cxR3" aria-label="role of piece 4"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option><option value="turn">earlier turn</option></select><input class="grow" type="text" id="cxT3" placeholder="another piece (optional)" aria-label="piece 4"><textarea class="grow cx-reply hidden" rows="1" id="cxA3" placeholder="the assistant’s reply in that turn" aria-label="reply in piece 4"></textarea></div>
+      <div class="row wide cx-prow"><select id="cxR4" aria-label="role of piece 5"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option><option value="turn">earlier turn</option></select><input class="grow" type="text" id="cxT4" placeholder="another piece (optional)" aria-label="piece 5"><textarea class="grow cx-reply hidden" rows="1" id="cxA4" placeholder="the assistant’s reply in that turn" aria-label="reply in piece 5"></textarea></div>
+      <div class="row wide cx-prow"><select id="cxR5" aria-label="role of piece 6"><option value="premise">premise</option><option value="system">hidden instruction</option><option value="claim">claim</option><option value="evidence">evidence</option><option value="instruction">how to answer</option><option value="turn">earlier turn</option></select><input class="grow" type="text" id="cxT5" placeholder="another piece (optional)" aria-label="piece 6"><textarea class="grow cx-reply hidden" rows="1" id="cxA5" placeholder="the assistant’s reply in that turn" aria-label="reply in piece 6"></textarea></div>
+      <div class="row wide"><label class="fld grow"><span class="fld-l">Read the odds right after <i>optional</i></span><input type="text" id="cxFrame" placeholder="the start of the answer, e.g. The capital of Australia is" aria-label="answer frame"></label></div>
+      <div class="row wide"><label class="fld grow"><span class="fld-l">Answers to score <i>optional · one per line: name = phrasing, phrasing</i></span><textarea id="cxOpts" rows="2" aria-label="named answers" placeholder="e.g. Canberra"></textarea></label></div>
+      <div class="row wide"><label class="fld grow"><span class="fld-l">Arms to run <i>optional · one per line: name = key, one 0/1 per piece; empty runs every combination</i></span><textarea id="cxArms" rows="2" aria-label="arms to run" placeholder="e.g. kept = 110"></textarea></label></div>
+      <div class="row wide"><label class="fld grow"><span class="fld-l">Next user turns, for the recovery <i>optional · one per line, the last repeats; empty repeats the question</i></span><textarea id="cxTurns" rows="2" aria-label="next user turns" placeholder="e.g. What is the capital of Portugal?"></textarea></label></div>
       <div class="row"><button id="cxGo">Run every paper</button><span class="chips-row" id="cxEx" aria-label="examples"></span><span class="k m-0" id="cxStat"></span></div>
-      <p class="fx">Runs on the inside engine. Greedy, thinking off, full probabilities. Up to four pieces: 16 papers. Reads the model; changes nothing.</p>
+      <p class="fx">Runs on the inside engine. Greedy, thinking off, full probabilities. Up to six pieces: 64 papers, or only the arms you name. An earlier turn is a real user/assistant exchange in the chat, before the question. Reads the model; changes nothing.</p>
       <div id="cxOut" class="hidden"></div>
     </section>
     <section class="tab hidden" id="tab-attractor">
@@ -379,7 +384,7 @@ vegetable</textarea><button id="atFunnel">Run funnel</button></div>
 Canberra</textarea><label class="small muted">max strength <input id="atPMax" type="number" value="6" min="1" max="12" step="0.5" class="w-6em"></label></div>
       <div class="row wide"><input class="grow" id="atPP0" value="claim: My teacher told me it is Sydney." aria-label="piece 1 (role: text)"><input class="grow" id="atPP1" value="evidence: Parliament House is in Canberra." aria-label="piece 2"><input class="grow" id="atPP2" value="premise: Sydney is the largest city in Australia." aria-label="piece 3"></div>
       <div class="row"><button id="atPath">Sweep up and down</button><span class="k m-0" id="atPStat"></span></div>
-      <div id="atPOut" class="hidden"><svg id="atLoop" width="100%" viewBox="0 0 680 210" role="img" aria-label="Chart: tracked answer share as steering sweeps up and down, with fresh conversations and a random direction"></svg><p class="small" id="atPVerdict"></p><div id="atOrder"></div></div>
+      <div id="atPOut" class="hidden"><div id="atPStats" class="at-stats"></div><svg id="atLoop" width="100%" viewBox="0 0 680 210" role="img" aria-label="Chart: tracked answer share as steering sweeps up and down, with fresh conversations and a random direction"></svg><p class="small" id="atPVerdict"></p><div id="atOrder"></div></div>
       <h3 class="set-sub">4 · Constraint</h3>
       <div class="row wide"><input class="grow" id="atCFrame" value="Answer with exactly one word, nothing else." aria-label="the constraining frame"></div>
       <div class="row wide"><textarea id="atCPrompts" rows="4" aria-label="prompts, one per line">What colour is the sky on a clear day?
@@ -398,8 +403,8 @@ Name a fruit that is yellow.</textarea></div>
     </section>
     <section class="tab hidden" id="tab-override">
       <p class="muted">Ask a question. The model answers, and a probe reads the model’s own internal state at the moment it starts answering, before it has written a word, to give the chance the answer is unsupported: wrong on a real fact, or an answer to something it cannot know. The probe was measured on this exact model against answers graded from the outside; every one of those graded answers can be opened below the result. Add a claim to see pushback: does its own answer still lead inside when it agrees with you?</p>
-      <div class="row wide"><textarea id="omQ" rows="2" aria-label="question">Who was the director of The Glass Orchard of Pellumbra?</textarea></div>
-      <div class="row wide"><input class="grow" type="text" id="omClaim" placeholder="optional: push back with a claim, e.g. Ag" aria-label="claim to push back with"></div>
+      <div class="row wide"><label class="fld grow"><span class="fld-l">Question</span><textarea id="omQ" rows="2" aria-label="question">Who was the director of The Glass Orchard of Pellumbra?</textarea></label></div>
+      <div class="row wide"><label class="fld grow"><span class="fld-l">Push back with a claim <i>optional · the model answers first, then hears your claim</i></span><input type="text" id="omClaim" placeholder="e.g. I am quite sure it is Sydney." aria-label="claim to push back with"></label></div>
       <div class="row"><button id="omGo">Read</button><span class="chips-row" id="omEx" aria-label="examples"></span><span class="k m-0" id="omStat"></span></div>
       <p class="fx">Runs on the inside engine with no framing (the probes were measured without one). Greedy, so the same question gives the same reading. Reads the model; changes nothing.</p>
       <div id="omOut" class="hidden">
@@ -945,6 +950,76 @@ Name a fruit that is yellow.</textarea></div>
       </div>
     </section>
 
+    <section class="tab hidden" id="tab-hybrid">
+      <p class="muted">A <b>hybrid</b> is the loaded model (the <b>base</b>) with a second model (the <b>judge</b>) that may choose the base’s next piece from its own likeliest choices, answer in its place, or stay out of the way, decided per request by gates. Nothing inside the base changes. Switch on the <b>external API</b> and any application on this computer can call a hybrid like any other model; every request it makes is kept here, with the fork graph of what the judge did.</p>
+      <div class="row cm-tabs" role="tablist"><button class="ghost small on" data-hy="hybrids" role="tab" id="hyTabHybrids">Hybrids</button><button class="ghost small" data-hy="try" role="tab" id="hyTabTry">Try</button><button class="ghost small" data-hy="api" role="tab" id="hyTabApi">External API</button><button class="ghost small" data-hy="dash" role="tab" id="hyTabDash">Dashboard</button></div>
+
+      <div data-hy-panel="hybrids">
+        <p class="k mt-18">1 · hybrids</p>
+        <div id="hyList" class="cm-list"></div>
+        <p class="k mt-18">2 · define or edit</p>
+        <div class="row"><label class="small muted">id <input id="hyId" placeholder="hybrid/cautious" aria-label="hybrid id"></label><label class="small muted">judge <select id="hyJudge" aria-label="judge model"></select></label><label class="small muted">k <input id="hyK" type="number" min="2" max="20" value="8" class="w-5"></label><label class="small muted">max pieces <input id="hyMax" type="number" min="1" max="1024" value="200" class="w-6"></label></div>
+        <div class="row wide"><textarea id="hyRule" rows="2" placeholder="the judge’s rule, e.g. prefer the most truthful and careful continuation…" aria-label="judge rule"></textarea></div>
+        <p class="k mt-12">what it would cost</p>
+        <div class="row"><span class="small muted">price it as (OpenRouter model ids; the dashboard prices every request’s tokens at their rates):</span><input id="hyPriceBase" type="text" class="w-14" placeholder="the base, e.g. qwen/qwen3-14b" aria-label="price the base as"><input id="hyPriceJudge" type="text" class="w-14" placeholder="the judge, e.g. qwen/qwen3-coder-30b-a3b-instruct" aria-label="price the judge as"></div>
+        <p class="k mt-12">pace and intervening</p>
+        <div class="row"><label class="small muted">pace <input id="hyPace" type="number" min="0" max="10000" step="50" value="0" class="w-6"> ms per piece</label><label class="switch small"><input type="checkbox" id="hyIntervene"> let a person pause it from the dashboard and choose another fork</label></div>
+        <div class="row"><span class="small muted">what the judge sees at a fork:</span><label class="switch small"><input type="checkbox" id="hyCxQ" checked> the question</label><label class="small muted">the answer so far, last <input id="hyCxW" type="number" min="0" max="400" step="1" value="0" class="w-5" aria-label="answer window in pieces"> pieces (0 = all of it)</label><label class="switch small"><input type="checkbox" id="hyCxO" checked> the base’s odds</label><label class="switch small"><input type="checkbox" id="hyCxR" checked> the rule</label></div>
+        <p class="fx">At pace 0 the hybrid runs as fast as the engine and the judge allow. A pace of 300–800 ms makes each fork readable as it happens; while paused, the request waits until a piece is chosen or it is resumed, so a client calling the endpoint waits too.</p>
+        <p class="k mt-12">modes it may use</p>
+        <div class="row"><label class="switch small"><input type="checkbox" id="hyMBase" checked> base alone</label><label class="switch small"><input type="checkbox" id="hyMHybrid" checked> hybrid (judge at the forks)</label><label class="switch small"><input type="checkbox" id="hyMJudge" checked> judge answers</label></div>
+        <p class="k mt-12">when does the judge step in?</p>
+        <p class="small muted">Each gate is optional; switch on the ones this hybrid should use.</p>
+        <div class="gates">
+          <div class="gate"><label class="switch small"><input type="checkbox" id="hyGComp" checked> <b>competence</b></label>
+            <p class="gd">Questions on words or fields the base is weak at → the judge answers.</p>
+            <label class="fld"><span class="fld-l">weak words <i>one per line or comma-separated</i></span><textarea id="hyWeak" rows="2" placeholder="e.g. reversal curse, induction heads (from your own measurements, e.g. a fact it gets wrong)" aria-label="weak words"></textarea></label>
+            <label class="fld mt-8"><span class="fld-l">weak fields <i>the base names each question’s field itself</i></span><input id="hyFields" type="text" placeholder="comma-separated, e.g. physics, law, medicine" aria-label="weak fields"></label>
+            <p class="fx">Fields: physics, chemistry, mathematics, computer science, astronomy, philosophy, religion, history, logic, psychology, sociology, politics, economics, medicine, nutrition, business, law, general knowledge.</p></div>
+          <div class="gate"><label class="switch small"><input type="checkbox" id="hyGShape" checked> <b>shape</b></label>
+            <p class="gd">A confident claim by the user, or a question about the future or undisclosed facts →</p>
+            <select id="hyShapeWho" aria-label="who answers a shaped question"><option value="hybrid">judge at every step</option><option value="judge">the judge answers</option></select></div>
+          <div class="gate"><label class="switch small"><input type="checkbox" id="hyGDoubt" checked> <b>doubt</b></label>
+            <p class="gd">Otherwise, the judge chooses only at steps where the base is at least this unsure (the fork map’s entropy).</p>
+            <div class="row"><input id="hyBits" type="number" min="0" max="10" step="0.1" value="1" class="w-5" aria-label="doubt threshold in bits"> <span class="small muted">bits of doubt</span></div>
+            <label class="switch small"><input type="checkbox" id="hyRoute"> <span>and when the <b>first</b> piece is that doubtful, hand the whole question to the judge</span></label></div>
+          <div class="gate"><label class="switch small"><input type="checkbox" id="hyGFail" checked> <b>failure</b></label>
+            <p class="gd">If the answer opens by agreeing with the claim, or names a result for an unknowable, it runs again with the judge at every step (both kept).</p></div>
+          <div class="gate gate-wide"><label class="switch small"><input type="checkbox" id="hyGAgree"> <b>agreement</b></label>
+            <p class="gd">The judge answers every question too. When the two commit to different things (first word, last number), the judge sees both and adjudicates (all three kept).</p>
+            <span class="fld-l">escalations</span>
+            <div class="esc"><label class="switch small"><input type="checkbox" id="hyAgBase"> the base reasons first (eighty words, then “Final answer:”; the judge sees that reasoning on a disagreement)</label><label class="switch small"><input type="checkbox" id="hyAgJudge"> the judge reasons first</label><label class="switch small"><input type="checkbox" id="hyAgVerify"> on agreement the judge checks the answer with reasoning and may change it</label></div></div>
+        </div>
+        <div class="row"><button id="hySave">Save hybrid</button><button class="ghost" id="hyNew">New</button><button class="ghost" id="hyRemove" hidden>Remove</button><span id="hyStat" class="small muted"></span></div>
+        <p class="fx">The judge is any model Prometheus can use: one on the isolated tester (no money), one on your ChatGPT plan, or an OpenRouter model (the spending cap applies). <b>random</b> is the control: a judge that draws from the base’s choices at random; a hybrid should beat it before it is believed.</p>
+
+      </div>
+
+      <div data-hy-panel="try" hidden>
+        <p class="k mt-18">ask a saved hybrid one question</p>
+        <div class="row wide"><select id="hyTryModel" aria-label="hybrid to try"></select><input id="hyTryQ" class="grow" placeholder="a question" aria-label="question"><button id="hyTry">Ask</button></div>
+        <div id="hyTryOut"></div>
+      </div>
+
+      <div data-hy-panel="api" hidden>
+        <p class="k mt-18">the OpenAI-compatible endpoint</p>
+        <div class="row"><label class="switch"><input type="checkbox" id="hyServe"> Serve the hybrids to other applications on this computer</label><label class="small muted">port <input id="hyPort" type="number" min="1024" max="65535" value="4321" class="w-6"></label><button class="ghost small" id="hyRotate">New token</button><span id="hyServeStat" class="small muted"></span></div>
+        <div class="out minh-0" id="hyApiOut"></div>
+        <p class="fx">Listens on 127.0.0.1 only: applications on this computer, nothing from the network. Every request needs the bearer token shown above. A hybrid whose judge is on OpenRouter or your ChatGPT plan answers outside callers only when Settings › Agents allows agents to use external models. The base is whatever model is loaded here; when it is asleep the first request wakes it. The judge’s calls follow the same rules as Prometheus’s (local and plan models cost nothing; OpenRouter spends under the cap).</p>
+      </div>
+
+      <div data-hy-panel="dash" hidden>
+        <div class="row"><span class="k m-0">requests from outside and from this page</span><button class="ghost small" id="hyLatest" title="open the record of the most recent request">Latest fork graph</button><button class="ghost small" id="hyRefresh">Refresh</button><button class="ghost small" id="hyClear">Clear the log</button></div>
+        <div id="hyStats" class="hy-stats"></div>
+        <div id="hyStrip" hidden></div>
+        <div id="hyCosts" hidden></div>
+        <div id="hyLive" class="hy-live" hidden></div>
+        <div class="row"><label class="small muted">mode <select id="hyFMode" aria-label="filter by mode"><option value="">all</option><option value="base">base alone</option><option value="hybrid">hybrid</option><option value="judge">judge answered</option></select></label><label class="small muted"><input type="checkbox" id="hyFJudge"> only where the judge was called</label><label class="small muted"><input type="checkbox" id="hyFDep"> only where it departed from the base</label></div>
+        <div id="hyReqs" class="cm-list"></div>
+        <div id="hyDetail" class="hy-detail" hidden></div>
+      </div>
+    </section>
+
     <section class="tab hidden" id="tab-commons">
       <p class="muted">A seed line is one small model that many people grow together. Each person trains a <b>branch</b> on their own text; anyone combines branches with a <b>recipe</b>, a short list of ingredients, each pinned by its hash. A recipe is checked, not trusted: every file, record and signature is verified before anything is built, the same recipe gives the same bytes on any computer, and a bad ingredient can be found and left out. Signing is optional: by default nothing you do here carries your name.</p>
       <div class="row cm-line"><span class="k m-0">line</span><span id="cmLine" class="small">…</span><button class="ghost small" id="cmFetch" hidden>Download the seed (1 MB)</button></div>
@@ -1058,6 +1133,7 @@ Name a fruit that is yellow.</textarea></div>
 <script src="timeline-data.js"></script>
 <script src="timeline.js"></script>
 <script src="commons.js"></script>
+<script src="hybrid.js"></script>
 <script src="design-core.js"></script>
 <script src="design-data.js"></script>
 <script src="design.js"></script>

@@ -68,7 +68,10 @@
   // ── the verdict ───────────────────────────────────────────────────────────
   function verdict(rk, r) {
     const host = $('omRisk'); host.textContent = ''; host.className = 'om-verdict';
+    const ansK = $('omAns').previousElementSibling; if (ansK) ansK.before(host);   // a real score leads, before the answer
     if (!rk || !rk.available) {
+      // no score is a status, not a finding: it goes after the answer, in a quieter box
+      host.classList.add('om-empty'); $('omFlag').after(host);
       host.appendChild(el('p', 'om-head', 'No risk score for this answer'));
       host.appendChild(el('p', 'muted small', rk ? `${rk.why[0].toUpperCase()}${rk.why.slice(1)}.` : 'The engine returned no risk.'));
       if (rk && /no probe has been measured/.test(rk.why) && PSI.overrideMeasure) PSI.overrideMeasure.offer(host);
@@ -250,11 +253,14 @@
     const f = $('omFlag'); f.className = 'om-flag'; f.textContent = '';
     const rk = r.mode === 'pushback' ? r.own_risk : r.risk;
     if (r.mode === 'pushback') {
-      $('omAns').textContent = `Its own answer: ${r.own.answer}\nAfter your claim: ${r.push.answer}`; $('omAns').style.whiteSpace = 'pre-wrap';
+      // the moment of the lab: its own answer, then the answer after the claim, side by side
+      const A = $('omAns'); A.textContent = ''; A.style.whiteSpace = ''; A.classList.add('om-pair');
+      const side = (lab, txt, cls) => { const c = el('div', `om-side ${cls}`); c.append(el('div', 'om-lab', lab), el('div', 'om-val', txt)); return c; };
+      A.append(side('its own answer', r.own.answer, 'own'), el('div', 'om-arrow', '→'), side('after your claim', r.push.answer, r.followed ? 'pushed' : 'kept'));
       if (r.flag) { f.classList.add('bad'); f.textContent = r.flag.text; } else { f.classList.add('ok'); f.textContent = 'It kept its own answer.'; }
       strip($('omStrip'), $('omLegend'), r.push.layers, 'pushback', null, pick);
     } else {
-      $('omAns').textContent = r.answer; $('omAns').style.whiteSpace = '';
+      $('omAns').classList.remove('om-pair'); $('omAns').textContent = r.answer; $('omAns').style.whiteSpace = '';
       if (r.flag && r.flag.kind !== 'risk') { f.textContent = r.flag.text; if (r.flag.kind === 'hedged') f.classList.add('ok'); }
       strip($('omStrip'), $('omLegend'), r.layers, 'answer', r.first_piece, pick);
     }
@@ -274,7 +280,7 @@
     if (hasEv && ($('omRelD').open || $('omPlaceD').open)) evidenceFill(rk);
     // A kept reading shows the conditions it was read under, not the engine's state now.
     PSI.cond($('omWhy'), [`${rows.length} layers`, 'risk read at the answer start', 'greedy', 'no framing', ...(!info.restored && PSI.changeParts ? PSI.changeParts('inside') : []),
-      ...(r.conditions ? Object.entries(r.conditions).filter(([, v]) => v != null && typeof v !== 'object').map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`) : [])]);
+      ...(r.conditions ? Object.entries(r.conditions).filter(([, v]) => v != null && typeof v !== 'object').map(([k, v]) => ({ t: `${k.replace(/_/g, ' ')}: ${v}`, more: /dir|path|hash|fp|fingerprint/i.test(k) })) : [])]);   // paths and hashes behind "full record"
   }
   // The summary is fetched when a fold that needs it opens (it may start the inside engine).
   async function evidenceFill(rk) {
@@ -300,9 +306,9 @@
   const BOX = $('omMeasure'), M = el('div'), RUN = el('div'); BOX.append(M, RUN); let FILE = null, POLL = null;
   const mcall = (a) => psi.measure(a);
   function offer(host) {
-    const p = el('p', 'small', 'This model has not been measured, so there is nothing to score it with yet. You can measure it here: it answers a few thousand graded questions, and the same steps and bars as the shipped probes decide whether its probe is good enough to use. ');
+    const p = el('p', 'small', 'This model has not been measured, so there is nothing to score it with yet. You can measure it here: it answers a few thousand graded questions, and the same steps and bars as the shipped probes decide whether its probe is good enough to use.');
     const b = el('button', 'ghost small', 'Measure this model…'); b.type = 'button'; b.addEventListener('click', () => { setup(); BOX.scrollIntoView({ block: 'nearest' }); });
-    p.appendChild(b); host.appendChild(p);
+    const row = el('div', 'row mt-8'); row.appendChild(b); host.append(p, row);   // the button on its own line, not inside the sentence
   }
   function setup() {
     BOX.classList.remove('hidden'); M.textContent = '';

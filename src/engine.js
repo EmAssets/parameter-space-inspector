@@ -258,6 +258,13 @@ class Engine {
     });
     const meta = metaOf(out, 0);
     const cp = (out.completion_probabilities || [])[0];
+    // A piece that is only part of a character (a Malayalam, Tamil or Bengali letter cut into byte pieces): llama-server
+    // picks it but never reports its odds, in any request form, so the step is the server's likeliest piece with its
+    // odds unknown, not an ending.
+    if (!cp && meta.stop !== 'eos' && Array.isArray(out.tokens) && out.tokens.length) {
+      const id = out.tokens[0];
+      return { top: [{ id, piece: await this.piece(id), p: null }], unreported: true, entropy: null, entropy_is_lower_bound: false, covered: null, meta };
+    }
     // No probabilities means the model stopped on an end token at once: a normal ending, and no distribution
     // to measure, so the entropy is null (not a reading of 0).
     if (!cp) return { top: [], entropy: null, entropy_is_lower_bound: false, covered: 0, ended: true, meta };
@@ -294,6 +301,8 @@ class Engine {
     const steps = [];
     for (let i = 1; i < ids.length; i++) {
       const d = await this.next(ids.slice(0, i), k);
+      // no odds at this position (the model's likeliest next piece is part of a character): the text's piece is not scored
+      if (d.unreported) { steps.push({ pos: i, id: ids[i], p: null, rank: null, top: [], entropy: null, entropy_is_lower_bound: false, unreported: true, meta: d.meta }); onStep(i, ids.length - 1); continue; }
       const hit = d.top.find((t) => t.id === ids[i]);
       steps.push({ pos: i, id: ids[i], p: hit ? hit.p : null, rank: hit ? d.top.indexOf(hit) + 1 : null, top: d.top, entropy: d.entropy, entropy_is_lower_bound: d.entropy_is_lower_bound, meta: d.meta });
       onStep(i, ids.length - 1);

@@ -792,7 +792,8 @@
     if (models.size > 1) warn.push('The local model changed during the run: the readings do not describe one model.');
     const R = { plan, rows, edited, partial, warn, read: true, model: fileName([...models][0]),
       notes: ['Surprise is −log2 of the odds the model gave each piece that came. A sentence’s surprise is the sum over its pieces; the first piece is not scored (nothing comes before it).',
-        'A piece outside the model’s top 20 guesses is off scale: only a floor is known, so a total that includes one is “at least”.'] };
+        'A piece outside the model’s top 20 guesses is off scale: only a floor is known, so a total that includes one is “at least”.',
+        'Where the model’s likeliest next piece is only part of a character, llama.cpp reports no odds: such a piece is not scored and counts 0 in a total, which is then “at least” too.'] };
     const [A, B] = plan.factors;
     if (plan.measures.includes('paired') && B) {
       const va = [...new Set(rows.map((r) => r.item[A]))], vb = [...new Set(rows.map((r) => r.item[B]))];
@@ -852,7 +853,7 @@
         o.addEventListener('click', () => { PSI.goto('read'); const t = $('readText'); if (t) { t.value = row.item.text; $('readGo').click(); } });
         h.appendChild(o); box.appendChild(h);
         const rib = el('div', 'ribbon'); rib.dir = 'auto'; rib.appendChild(el('span', 'prompt', show(row.t.first)));
-        row.pieces.forEach((x) => { const sp = el('span', x.surprise == null ? 'offscale' : null, show(x.piece)); if (x.surprise != null) sp.style.background = `rgba(242,241,238,${(0.03 + Math.min(1, x.surprise / 12) * 0.6).toFixed(3)})`; sp.title = x.surprise == null ? `off scale: over ${(x.floor || 0).toFixed(1)} bits` : `${x.surprise.toFixed(1)} bits`; rib.appendChild(sp); });
+        row.pieces.forEach((x) => { const sp = el('span', x.unreported ? 'unreported' : x.surprise == null ? 'offscale' : null, show(x.piece)); if (x.surprise != null) sp.style.background = `rgba(242,241,238,${(0.03 + Math.min(1, x.surprise / 12) * 0.6).toFixed(3)})`; sp.title = x.unreported ? 'not scored: llama.cpp reports no odds at this position (the likeliest next piece is part of a character)' : x.surprise == null ? `off scale: over ${(x.floor || 0).toFixed(1)} bits` : `${x.surprise.toFixed(1)} bits`; rib.appendChild(sp); });
         box.appendChild(rib);
       });
     }

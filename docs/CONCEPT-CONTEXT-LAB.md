@@ -78,4 +78,4 @@ lowercase word; greeting goes at the front; keep "I'm").
 3. Signed records for the site export (the lineage signing used elsewhere), so a replayed recording is verifiable.
 4. Option-free summaries: without named answers only `moved` is reported; a classifier of answer kinds (hedge vs
    answer, using override.HEDGE) would give flips there too.
-5. More than four pieces (16 papers) would need a fractional design, not the full factorial.
+5. More than four pieces (16 papers) would need a fractional design, not the full factorial. Built in part: up to six pieces in full, or only the arms named (up to eight pieces, 64 papers); chat history as `turn` pieces and the recovery rollout came with it.

@@ -13,7 +13,7 @@
   const EX = window.PSIExp;
   const fmt = (s) => s >= 1000 ? `${(s / 1000).toLocaleString()}k` : String(s);
   // R.model: the weights the head scan and knock-outs came from; results on other weights are archived, never mixed.
-  const R = { steps: [], key: [], ask: {}, test: null, scan: null, ko: [], model: '' };
+  const R = { steps: [], key: [], cmp: [], ask: {}, test: null, scan: null, ko: [], model: '' };
   const N = EX.NOISE, HT = 0.3;   // noise floor for one test's margin (nats); a head "looks back" above this induction attention
   const COPY = (P) => (P && P.label ? `${P.n} tokens × ${P.trials} trials, ids ${P.id_lo.toLocaleString()}–${P.id_hi.toLocaleString()}, seed ${P.seed}` : 'protocol not reported');
   const heatMode = () => ($('emHeadsShow') ? $('emHeadsShow').value : 'induction');
@@ -53,6 +53,10 @@
       stepLabel(); stepsReason(null);
       PSI.status($('emStat'), frag(`${R.steps.length} `, PSI.term('checkpoints', 'checkpoint'), ` on disk · ${l.device}`), 'ok');
       $('emTestAllLbl').textContent = `all ${R.steps.length} checkpoints (slower)`;
+      // The study's pair (512, 1,000) when both are on disk, else the first and last there; one step: nothing to compare.
+      R.cmp = [512, 1000].every((s) => R.steps.includes(s)) ? [512, 1000] : R.steps.length > 1 ? [R.steps[0], R.steps[R.steps.length - 1]] : [];
+      $('emCmp').classList.toggle('hidden', !R.cmp.length);
+      if (R.cmp.length) $('emCmp').textContent = `Compare step ${R.cmp[0].toLocaleString()} and ${R.cmp[1].toLocaleString()}`;
     } catch (e) { noCheckpoints(`${PSI.explain(e).text}`); } finally { listing = false; }
   }
   const curStep = () => R.steps[Number(slider.value)] || 0;
@@ -67,7 +71,7 @@
     finally { PSI.setRunning(VIEW, false); }
   }
   async function ask(steps) {
-    if (!steps.length) return PSI.status($('emStat'), 'Steps 512 and 1,000 are not among the checkpoints on disk.', 'warn');
+    if (!steps.length) return;
     const btns = [$('emAsk'), $('emCmp')]; btns.forEach((b) => { b.disabled = true; });
     const prompt = $('emPrompt').value.trim(), text = $('emText').value.trim(); let cur = steps[0];
     await job($('emStat'), `loading step ${cur.toLocaleString()} and asking…`, () => `Asking at step ${cur.toLocaleString()} failed`, async () => {
@@ -96,7 +100,7 @@
   } });
   PSI.keep('emergence-heads', { inputs: ['emK', 'emHeadsShow'], render: () => {} });
   $('emAsk').addEventListener('click', () => ask([curStep()]));
-  $('emCmp').addEventListener('click', () => ask([512, 1000].filter((s) => R.steps.includes(s))));
+  $('emCmp').addEventListener('click', () => ask(R.cmp));
   function renderAsk(steps) {
     const box = $('emAskOut'); box.textContent = ''; R.lastAsk = steps;
     steps.forEach((s) => {

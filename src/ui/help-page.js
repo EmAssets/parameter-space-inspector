@@ -59,11 +59,24 @@
     (ALIAS[k] || []).forEach((a) => { if (used.has(a) || document.getElementById(a)) return; const s = el('span'); s.id = a; dt.appendChild(s); used.add(a); });
     gl.appendChild(dt); gl.appendChild(el('dd', null, G[k]));
   });
+  // A step names each control by its label with its id in brackets, for Prometheus and agents. The manual shows the label
+  // and the words: "(hyRpPick: 1 the likeliest…)" keeps "(1 the likeliest…)", "(hyCxQ, hyCxW)" and "(open_view read)" go.
+  const ID = '(?:[a-z]{2,6}[A-Z][A-Za-z0-9]*|prompt)';
+  const readable = (t) => String(t)
+    .replace(/\s*\(open_view [a-z]+\)/g, '')
+    .replace(/\s*\(in the window:[^)]*\)/g, '').replace(/;?\s*in the window,? (?:find_option|view_data)[^;)]*/g, '')
+    .replace(/^current_view:\s*marked_pieces\s+/, 'Read the result: the view ').replace(/^current_view:\s*/, 'Read the result: ')
+    .replace(new RegExp(`\\s*\\(${ID}(?:,\\s*${ID})*\\)`, 'g'), '')
+    .replace(new RegExp(`\\(${ID}(?:,\\s*${ID})*[:;]\\s*`, 'g'), '(')
+    .replace(/\s{2,}/g, ' ');
   const Q = (window.PSI_GUIDE || []).filter((x) => !EMOFF || !EMT.test(`${x.q} ${x.p}`)), K = window.PSI_GUIDE_KINDS || [], qm = document.getElementById('qm');
   K.forEach((k) => {
     const items = Q.filter((x) => x.k === k.id); if (!items.length) return;
     qm.appendChild(el('h3', null, k.t));
-    items.forEach((x) => { const d = el('details'); d.appendChild(el('summary', null, x.q)); d.appendChild(el('p', 'p', x.p)); d.appendChild(el('p', null, x.see)); if (x.f) d.appendChild(el('p', null, `Found: ${x.f}`)); if (x.o) d.appendChild(el('p', null, `Elsewhere: ${x.o}`)); qm.appendChild(d); });
+    items.forEach((x) => { const d = el('details'); d.appendChild(el('summary', null, x.q)); d.appendChild(el('p', 'p', x.p)); d.appendChild(el('p', null, x.see));
+      // Steps name controls by their label; the id in brackets is for Prometheus and agents and is not shown here.
+      if (x.steps) { const ol = el('ol'); x.steps.forEach((st) => ol.appendChild(el('li', null, readable(st)))); d.appendChild(ol); }
+      if (x.f) d.appendChild(el('p', null, `Found: ${x.f}`)); if (x.agent) d.appendChild(el('p', null, `From outside: ${x.agent}`)); if (x.o) d.appendChild(el('p', null, `Elsewhere: ${x.o}`)); qm.appendChild(d); });
   });
   // The glossary is built after the page is parsed, so a deep link to a term needs a nudge.
   const jump = () => { const h = decodeURIComponent(location.hash.slice(1)); if (!h.startsWith('term-')) return; const t = document.getElementById(h); if (t) (t.closest('dt') || t).scrollIntoView({ block: 'start' }); };

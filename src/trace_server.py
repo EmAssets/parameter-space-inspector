@@ -122,6 +122,19 @@ def _weight_bytes(path):
     st = [n for n in names if n.endswith(".safetensors")] or [n for n in names if n.endswith(".bin") and "model" in n]
     return sum(os.path.getsize(os.path.join(path, n)) for n in st)
 
+def _stored_dtype(path):
+    """The dtype the weights are stored in, from the first safetensors file's header (its first tensor); None when
+    there is none to read."""
+    try:
+        f = sorted(n for n in os.listdir(path) if n.endswith(".safetensors"))[0]
+        with open(os.path.join(path, f), "rb") as fh:
+            n = int.from_bytes(fh.read(8), "little")
+            if not 2 <= n <= 100 << 20: return None   # not a header safetensors would accept either
+            h = json.loads(fh.read(n))
+        st = next(v["dtype"] for k, v in h.items() if k != "__metadata__")
+        return {"F32": torch.float32, "F16": torch.float16, "BF16": torch.bfloat16}.get(st)
+    except Exception: return None   # unreadable or malformed: the ordinary load path, whose own checks report it
+
 def _weights_hash(path):
     """Which weights these are, cheaply: sha256 of model.safetensors.index.json, or of the first 1 MB of the single
     weights file (its header names every tensor with its shape and offset). Computed once at load."""
@@ -199,7 +212,11 @@ class Tracer:
         t0 = time.time()
         self.tok = AutoTokenizer.from_pretrained(path)
         _spm_pieces(self.tok); _control_tokens(self.tok)
-        self.model =AutoModelForCausalLM.from_pretrained(path, dtype=dtype, attn_implementation="eager", device_map=self.device, low_cpu_mem_usage=True).eval()
+        # Converting weights while loading them straight onto Apple's GPU crashes the process (Pythia's fp32 checkpoints
+        # into bf16: a segfault, no Python error): such a model is converted on the CPU and then moved.
+        if devices.kind(self.device) == "mps" and _stored_dtype(path) not in (None, dtype):
+            self.model = AutoModelForCausalLM.from_pretrained(path, dtype=dtype, attn_implementation="eager", low_cpu_mem_usage=True).to(self.device).eval()
+        else: self.model = AutoModelForCausalLM.from_pretrained(path, dtype=dtype, attn_implementation="eager", device_map=self.device, low_cpu_mem_usage=True).eval()
         _neox_names(self.model)
         self.L = self.model.config.num_hidden_layers
         self.model_dir = os.path.abspath(path)
@@ -765,10 +782,11 @@ class H(BaseHTTPRequestHandler):
                 if CTX is None or CTX.t is not MODEL: CTX = context_mod.ContextLab(MODEL)
                 act = body.get("action") or "run"
                 try:
-                    if act == "run": r = CTX.run(body.get("question"), body.get("pieces"), body.get("options"), body.get("frame", ""), body.get("n_new", 96), body.get("top", 8))
+                    if act == "run": r = CTX.run(body.get("question"), body.get("pieces"), body.get("options"), body.get("frame", ""), body.get("n_new", 96), body.get("top", 8), body.get("arms"))
+                    elif act == "rollout": r = CTX.rollout(body.get("question"), body.get("pieces"), body.get("keys") or body.get("key", ""), body.get("options"), body.get("frame", ""), body.get("turns"), body.get("n", 6), body.get("n_new", 64), body.get("correct"), body.get("rut"), body.get("names"))
                     elif act == "diverge": r = CTX.diverge(body.get("question"), body.get("pieces"), body.get("a", ""), body.get("b", ""), body.get("text") or None, body.get("n", 12))
                     elif act == "tree": r = CTX.tree(body.get("question"), body.get("pieces"), body.get("key", ""), body.get("show", 6), body.get("expand", 3), body.get("depth", 3), body.get("leaf_new", 30))
-                    else: return self._send(400, {"error": "context: action is one of run, diverge, tree"})
+                    else: return self._send(400, {"error": "context: action is one of run, diverge, tree, rollout"})
                 except ValueError as e: return self._send(400, {"error": str(e)})
                 r["conditions"] = conditions(t0); return self._send(200, r)
             if self.path.rstrip("/") == "/attractor":

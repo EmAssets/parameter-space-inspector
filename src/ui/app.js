@@ -245,6 +245,9 @@ For any question: name the level or levels the subject lives on; say what had to
     if (ids.length >= ctxLen()) return 'context';
     const d = await psi.next(ids, 20);
     if (!d.top.length) return 'eos';   // no odds at all: the model had already ended
+    // A piece that is part of a character: the server picked it and reported no odds, so nothing can be drawn here; the
+    // step is its likeliest piece, marked, whatever the creativity.
+    if (d.unreported) { const c = d.top[0]; S.steps.push({ top: d.top, entropy: null, covered: null, hcov: null, hk: 0, exact: true, unreported: true, id: c.id, piece: c.piece, q: null, chosen: 0, t: temp(), tps: null, end: false }); return null; }
     let entropy = d.entropy, hcov = d.covered, hk = 20;
     if (!((d.covered || 0) >= 0.98)) { const w = await psi.next(ids, 200).catch(() => null); if (w && w.top && w.top.length && w.entropy != null) { entropy = w.entropy; hcov = w.covered; hk = 200; } }
     const pick = sample(d.top, temp()), tm = (d.meta && d.meta.timings) || {};
@@ -259,14 +262,15 @@ For any question: name the level or levels the subject lives on; say what had to
   const END = 'end of answer', isEnd = (s, c, i) => S.eos.has(c.id) || (i === s.chosen && !!s.end);
   const lbl = (s, c, i) => (isEnd(s, c, i) ? `⟨${END}⟩` : show(c.piece).replace(/\n/g, '⏎'));
   const loose = (s) => !(s.exact != null ? s.exact : 1 - (s.covered == null ? 1 : s.covered) <= 0.02);
-  const doubt = (s, dp = 1) => `${loose(s) ? 'at least ' : ''}${s.entropy.toFixed(dp)}`;
-  const doubtTitle = (s) => { const k = s.hk || 20, c = s.hcov == null ? s.covered : s.hcov; return loose(s) ? `at least: ${((1 - (c == null ? 0 : c)) * 100).toFixed(0)}% of the odds lay outside the ${k} choices read` : `exact: its top ${k} choices held ${((c == null ? 1 : c) * 100).toFixed(1)}% of the odds`; };
+  const UNREP = 'odds not reported: this piece is only part of a character, and llama.cpp reports no odds for such a piece; the step took the server’s likeliest piece';
+  const doubt = (s, dp = 1) => (s.unreported ? 'unknown' : `${loose(s) ? 'at least ' : ''}${s.entropy.toFixed(dp)}`);
+  const doubtTitle = (s) => { if (s.unreported) return UNREP; const k = s.hk || 20, c = s.hcov == null ? s.covered : s.hcov; return loose(s) ? `at least: ${((1 - (c == null ? 0 : c)) * 100).toFixed(0)}% of the odds lay outside the ${k} choices read` : `exact: its top ${k} choices held ${((c == null ? 1 : c) * 100).toFixed(1)}% of the odds`; };
   // The conditions of the text on screen, recorded per run (Generate, +20, a fork) when it was made, so a later
   // change of a setting or model never relabels it; a frozen text says what it was made with.
   function genCond() {
     if (!S.gen) return;
     const ts = [...new Set(S.steps.map((s) => s.t))].map((t) => t.toFixed(2)), runs = S.gen.runs || [], last = runs[runs.length - 1];
-    const tps = S.steps.map((s) => s.tps).filter((v) => v != null), lb = S.steps.some(loose), ex = S.steps.some((s) => !loose(s)), forced = S.steps.filter((s) => s.forced).length;
+    const tps = S.steps.map((s) => s.tps).filter((v) => v != null), lb = S.steps.some(loose), ex = S.steps.some((s) => !s.unreported && !loose(s)), forced = S.steps.filter((s) => s.forced).length, unrep = S.steps.filter((s) => s.unreported).length;
     // At creativity 0 the top choice always wins, but two choices within 10 points can swap places between identical
     // runs (GPU arithmetic is not bit-exact): say how many steps were that close.
     const ties = S.steps.filter((s) => s.t <= 0.001 && !s.forced && s.top.length > 1 && s.top[0].p - s.top[1].p < 0.1).length;
@@ -275,6 +279,7 @@ For any question: name the level or levels the subject lives on; say what had to
       { t: `creativity ${ts.join(' then ') || temp().toFixed(2)}, drawn in the app from the model’s top 20`, term: 'creativity', title: 'The app reshapes the model’s odds for its 20 likeliest choices by creativity (the die odds) and draws one itself. The server draws nothing here: it only reports the odds.' },
       ties ? { t: `${ties} near-tie${ties === 1 ? '' : 's'}: a rerun may differ`, warn: true, title: 'Steps at creativity 0 where its top two choices were within 10 points (e.g. 52% and 48%). The likeliest one is taken, but such a close order can flip between identical runs, and the text after it with it.' } : null,
       { t: 'app draw unseeded: a rerun differs', term: 'seed' },
+      unrep ? { t: `${unrep} step${unrep === 1 ? '' : 's'} without odds (part of a character)`, warn: true, title: `${UNREP}. At those steps nothing was drawn, whatever the creativity.` } : null,
       forced ? { t: `${forced} step${forced === 1 ? '' : 's'} forced by you`, title: 'At a fork you picked the piece yourself: the die was not thrown there, so that step is your choice, not the model’s draw' } : null,
       last ? { t: `ended: ${STOP[last.stop]}${runs.length > 1 ? ` (${runs.length} runs)` : ''}`, title: runs.map((r, i) => `${i + 1}. ${r.how}: ${r.n} piece${r.n === 1 ? '' : 's'}, ended: ${STOP[r.stop]}. ${STOP_WHY[r.stop]}`).join('\n') } : null,
       last ? speedPart(tps) : null,
@@ -353,14 +358,15 @@ For any question: name the level or levels the subject lives on; say what had to
     const had = R.contains(document.activeElement); R.textContent = '';
     const cur = S.sel >= 0 ? S.sel : 0;
     S.steps.forEach((s, j) => {
-      const a = Math.min(1, s.entropy / GEN_CLIP), clip = s.entropy > GEN_CLIP;
+      const a = s.unreported ? 0 : Math.min(1, s.entropy / GEN_CLIP), clip = !s.unreported && s.entropy > GEN_CLIP;
       const sp = el('span', (j === S.sel ? 'sel ' : '') + (mask[j] ? 'copied ' : '') + (loop && loop.mark.has(j) ? 'loop ' : '') + (s.forced ? 'forced ' : '') + (clip ? 'clip' : ''), show(s.piece));
-      sp.style.background = `rgba(242,241,238,${(0.04 + a * 0.5).toFixed(3)})`;
-      const how = s.forced ? 'forced by you (not drawn)' : 'drawn by the app';
-      sp.title = `${how} · model’s odds ${(s.top[s.chosen].p * 100).toFixed(1)}% · ${doubt(s, 2)} bits of doubt (${doubtTitle(s)})${clip ? ` · past the colour scale (${GEN_CLIP} bits): drawn at full brightness, marked ▴` : ''}`;
+      sp.style.background = s.unreported ? 'none' : `rgba(242,241,238,${(0.04 + a * 0.5).toFixed(3)})`;
+      const how = s.forced ? 'forced by you (not drawn)' : s.unreported ? 'the server’s likeliest piece (not drawn: no odds reported)' : 'drawn by the app';
+      if (s.unreported) sp.classList.add('unreported');
+      sp.title = `${how} · model’s odds ${s.unreported ? 'not reported' : `${(s.top[s.chosen].p * 100).toFixed(1)}%`} · ${doubt(s, 2)} bits of doubt (${doubtTitle(s)})${clip ? ` · past the colour scale (${GEN_CLIP} bits): drawn at full brightness, marked ▴` : ''}`;
       sp.setAttribute('role', 'button'); sp.tabIndex = j === cur ? 0 : -1;
       if (s.end) sp.title = `${END} (the end token) · ${sp.title}`;
-      sp.setAttribute('aria-label', `step ${j + 1}: “${lbl(s, s, s.chosen)}”, ${how}, model’s odds ${pct(s.top[s.chosen].p)}, ${doubt(s)} bits of doubt${clip ? ', past the colour scale' : ''}`);
+      sp.setAttribute('aria-label', `step ${j + 1}: “${lbl(s, s, s.chosen)}”, ${how}, model’s odds ${s.unreported ? 'not reported' : pct(s.top[s.chosen].p)}, ${doubt(s)} bits of doubt${clip ? ', past the colour scale' : ''}`);
       if (j === S.sel) sp.setAttribute('aria-pressed', 'true');
       sp.addEventListener('click', () => { S.sel = j; render(); document.querySelector(`.col[data-j="${j}"]`)?.scrollIntoView({ inline: 'center', block: 'nearest' }); });
       R.appendChild(sp);
@@ -379,19 +385,20 @@ For any question: name the level or levels the subject lives on; say what had to
     const k = K(), fj = S.sel >= 0 ? S.sel : 0;
     S.steps.forEach((s, j) => {
       const col = el('div', 'col' + (j === S.sel ? ' sel' : '')); col.dataset.j = j;
-      const h = el('div', 'h', `${j + 1} · ${loose(s) ? '≥' : ''}${s.entropy.toFixed(1)} bits${s.forced ? ' · forced by you' : ''}`); h.title = doubtTitle(s) + (s.forced ? '\nForced by you: you picked this road; the die was not thrown here.' : '');
+      const h = el('div', 'h', `${j + 1} · ${s.unreported ? 'odds not reported' : `${loose(s) ? '≥' : ''}${s.entropy.toFixed(1)} bits`}${s.forced ? ' · forced by you' : ''}`); h.title = doubtTitle(s) + (s.forced ? '\nForced by you: you picked this road; the die was not thrown here.' : '');
       if (s.forced) col.classList.add('forced');
       col.appendChild(h);
       s.top.slice(0, Math.max(k, s.chosen + 1)).forEach((c, i) => {
         const b = el('div', 'cand' + (i === s.chosen ? ' chosen' : ''));
-        const bar = el('i'); bar.style.width = `${Math.max(2, c.p * 100)}%`; b.appendChild(bar);
-        b.appendChild(el('b', null, pct(c.p)));
+        const pc = c.p == null ? 'odds n/a' : pct(c.p);
+        const bar = el('i'); bar.style.width = `${Math.max(2, (c.p || 0) * 100)}%`; b.appendChild(bar);
+        b.appendChild(el('b', null, pc));
         const ce = isEnd(s, c, i); if (ce) b.classList.add('end');
         b.appendChild(document.createTextNode(lbl(s, c, i) || '∅'));
         const taken = i === s.chosen ? (s.forced ? 'forced by you' : 'the road taken (drawn)') : 'force this road instead';
-        b.title = `${ce ? 'the end token: the answer ends here · ' : ''}${taken} · model’s odds ${pct(c.p)}`;
+        b.title = `${ce ? 'the end token: the answer ends here · ' : ''}${taken} · model’s odds ${c.p == null ? 'not reported' : pct(c.p)}${s.unreported ? `\n${UNREP}` : ''}`;
         b.dataset.i = i; b.setAttribute('role', 'button'); b.tabIndex = j === fj && i === s.chosen ? 0 : -1;
-        b.setAttribute('aria-label', `step ${j + 1}: “${lbl(s, c, i) || 'nothing'}” model’s odds ${pct(c.p)}, ${taken}`);
+        b.setAttribute('aria-label', `step ${j + 1}: “${lbl(s, c, i) || 'nothing'}” model’s odds ${pc}, ${taken}`);
         if (i === s.chosen) b.setAttribute('aria-disabled', 'true'); else b.addEventListener('click', () => fork(j, i));
         col.appendChild(b);
       });
@@ -415,6 +422,10 @@ For any question: name the level or levels the subject lives on; say what had to
     const g = cv.getContext('2d'), W = cv.width, H = cv.height;
     g.fillStyle = '#0b0b0b'; g.fillRect(0, 0, W, H);
     if (!s) return;
+    if (s.unreported) {   // no odds, so no die
+      g.fillStyle = '#a9a69f'; g.font = `${11 * r}px Consolas, monospace`; g.textBaseline = 'middle'; g.fillText(`no die at this step: llama.cpp reported no odds for “${show(s.piece)}” (part of a character); the server’s likeliest piece was taken`, 4 * r, 35 * r);
+      cv.setAttribute('aria-label', `No die for step ${S.steps.indexOf(s) + 1}: ${UNREP}`); const n = $('diceNote'); if (n) n.textContent = ''; return;
+    }
     const q = s.q || adjust(s.top, temp());
     let x = 0; g.font = `${11 * r}px Consolas, monospace`; g.textBaseline = 'middle';
     q.forEach((p, i) => {
@@ -472,7 +483,9 @@ For any question: name the level or levels the subject lives on; say what had to
   function forkControls() {
     const sel = $('forkAlt'); sel.textContent = '';
     if (S.sel < 0 || !S.steps[S.sel]) { $('forkWhich').textContent = S.steps.length ? 'no step selected: pick a word in the text above' : 'nothing generated yet'; return; }
-    const s = S.steps[S.sel], certain = s.top[s.chosen].p >= 0.9;
+    const s = S.steps[S.sel];
+    if (s.unreported) { $('forkWhich').textContent = `step ${S.sel + 1}: “${lbl(s, s, s.chosen)}”, ${UNREP}. No other road to force here.`; return; }
+    const certain = s.top[s.chosen].p >= 0.9;
     $('forkWhich').textContent = `step ${S.sel + 1}: ${s.forced ? 'forced by you' : 'drew'} “${lbl(s, s, s.chosen)}” (model’s odds ${(s.top[s.chosen].p * 100).toFixed(0)}%)${certain ? ' · not a real fork: the model was nearly certain here; pick a dimmer word' : ''}`;
     s.top.slice(0, K()).forEach((c, i) => { if (i === s.chosen) return; const o = el('option', null, `“${lbl(s, c, i)}” ${(c.p * 100).toFixed(c.p < 0.1 ? 1 : 0)}%`); o.value = i; sel.appendChild(o); });
   }
@@ -507,7 +520,7 @@ For any question: name the level or levels the subject lives on; say what had to
   };
   const pathSent = () => (S.gen && S.gen.sent ? S.gen.sent : null);
   $('forkGo').addEventListener('click', () => pathsReady(true) && busy(async () => {
-    const alt = +$('forkAlt').value; if (Number.isNaN(alt)) throw new Error('No alternative at this step.');
+    const alt = $('forkAlt').value === '' ? NaN : +$('forkAlt').value; if (Number.isNaN(alt) || (S.steps[S.sel] && S.steps[S.sel].unreported)) throw new Error('No alternative at this step.');
     const r = await P.fork(S.promptIds, S.steps, S.sel, alt, { onProgress: (t) => { PSI.status($('forkStat'), t, 'busy'); }, promptText: $('prompt').value }).catch(failStat('forkStat', 'The fork analysis'));
     PSI.status($('forkStat'), 'done', 'ok');
     const F = P.FORK, nz = r.noise || { total: 0, noisy: 0 };
@@ -567,7 +580,7 @@ For any question: name the level or levels the subject lives on; say what had to
     if (!S.steps.length) { box.textContent = 'Nothing generated yet.'; return null; }
     if (!L) { box.textContent = 'No repeated phrase yet: the text has not fallen into a rut. (Push creativity down or steering up to find one.)'; return null; }
     const al = L.lowerBound ? 'at least ' : '';
-    box.textContent = `Attractor: “${show(L.text)}” repeats ${L.repeats} times from step ${L.from + 1}; average doubt after entering it ${al}${L.entropyAfter} bits, before it ${L.entropyBefore == null ? 'not measured (the loop starts at step 1)' : `${al}${L.entropyBefore} bits over ${L.nBefore} step${L.nBefore === 1 ? '' : 's'}`}${L.lowerBound ? ' (“at least”: some steps’ odds were not fully read)' : ''}. A loop is a basin the model cannot climb out of at this creativity: each repeat makes the next more likely.`;
+    box.textContent = `Attractor: “${show(L.text)}” repeats ${L.repeats} times from step ${L.from + 1}; average doubt after entering it ${L.entropyAfter == null ? 'not measured' : `${al}${L.entropyAfter} bits`}${L.unknown ? ` (${L.unknown} step${L.unknown === 1 ? '' : 's'} without odds left out)` : ''}, before it ${L.entropyBefore == null ? 'not measured (the loop starts at step 1)' : `${al}${L.entropyBefore} bits over ${L.nBefore} step${L.nBefore === 1 ? '' : 's'}`}${L.lowerBound ? ' (“at least”: some steps’ odds were not fully read)' : ''}. A loop is a basin the model cannot climb out of at this creativity: each repeat makes the next more likely.`;
     return L;
   }
 
@@ -584,14 +597,15 @@ For any question: name the level or levels the subject lives on; say what had to
     h.textContent = '';
     const bins = Array.from({ length: READ_CLIP }, (_, b) => ({ label: `${b}–${b + 1}`, n: 0 }));
     const clip = { label: `${READ_CLIP}+`, n: 0, cls: 'clip', title: `past the colour scale (${READ_CLIP} bits)` }, off = { label: 'off scale', n: 0, cls: 'offscale', title: 'not in its top 20: only a floor is known, so not placed in a bin' };
-    rows.forEach((r) => { if (r.surprise == null) off.n++; else if (r.surprise >= READ_CLIP) clip.n++; else bins[Math.floor(r.surprise)].n++; });
-    const all = [...bins, clip, off], mx = Math.max(1, ...all.map((b) => b.n));
+    const un = { label: 'no odds', n: 0, cls: 'unreported', title: 'not scored: llama.cpp reports no odds where the likeliest next piece is part of a character' };
+    rows.forEach((r) => { if (r.unreported) un.n++; else if (r.surprise == null) off.n++; else if (r.surprise >= READ_CLIP) clip.n++; else bins[Math.floor(r.surprise)].n++; });
+    const all = [...bins, clip, off, ...(un.n ? [un] : [])], mx = Math.max(1, ...all.map((b) => b.n));
     h.appendChild(el('p', 'k', 'surprise per piece, in bits (how many pieces fell in each)'));
     const row = el('div', 'surp-bars');
     all.forEach((b) => {
-      const c = el('div', 'surp-bin' + (b.cls ? ` ${b.cls}` : '')); c.title = `${b.label} bits: ${b.n} piece${b.n === 1 ? '' : 's'}${b.title ? ` · ${b.title}` : ''}`;
+      const c = el('div', 'surp-bin' + (b.cls ? ` ${b.cls}` : '')); c.title = `${b.cls === 'unreported' ? b.label : `${b.label} bits`}: ${b.n} piece${b.n === 1 ? '' : 's'}${b.title ? ` · ${b.title}` : ''}`;
       const bar = el('i'); bar.style.height = `${Math.round((b.n / mx) * 48)}px`; if (!b.n) bar.classList.add('zero');
-      c.appendChild(el('b', null, b.n ? String(b.n) : '')); c.appendChild(bar); c.appendChild(el('small', null, b.cls === 'offscale' ? 'off' : b.label.split('–')[0]));
+      c.appendChild(el('b', null, b.n ? String(b.n) : '')); c.appendChild(bar); c.appendChild(el('small', null, b.cls === 'offscale' ? 'off' : b.cls === 'unreported' ? 'n/a' : b.label.split('–')[0]));
       row.appendChild(c);
     });
     h.appendChild(row);
@@ -627,7 +641,13 @@ For any question: name the level or levels the subject lives on; say what had to
     const first =el('span', 'prompt', show(toks[0].piece)); first.title = 'the first piece: nothing comes before it (no beginning-of-text token was given), so there is no guess to measure'; out.appendChild(first);
     let total = 0, n = 0, off = 0, floors = 0, nFloor = 0, clipped = 0;
     const rows = [], tps = [], kept = [];   // kept: each scored piece, for the experiment designer (PSIRead.last)
+    let unrep = 0;
     sc.forEach((s, i) => {
+      if (s.unreported) {   // part of a character: llama.cpp reports no odds, so neither surprise nor doubt is known
+        unrep++; rows.push({ surprise: null, unreported: true }); kept.push({ piece: toks[i + 1].piece, surprise: null, floor: null, rank: null, unreported: true });
+        const sp = el('span', 'unreported', show(toks[i + 1].piece)); sp.dataset.bits = 'not reported'; sp.title = 'not scored: llama.cpp reports no odds at this position: the model’s likeliest next piece here is only part of a character';
+        sp.setAttribute('aria-label', `“${show(toks[i + 1].piece)}”: not scored, no odds reported at this position`); out.appendChild(sp); return;
+      }
       // A piece outside its top 20 is off scale: only a floor is known (the 20th guess's surprise). Drawn hatched, never in the plain mean.
       const floor = s.top.length ? -Math.log2(s.top[s.top.length - 1].p) : null, surprise = s.p ? -Math.log2(s.p) : null;
       const cov = s.top.reduce((a, x) => a + x.p, 0), ent = s.entropy == null ? null : s.entropy;
@@ -662,7 +682,7 @@ For any question: name the level or levels the subject lives on; say what had to
     // surprising pieces, so new text would look more familiar than it is.
     const bounded = n + nFloor ? (total + floors) / (n + nFloor) : null, plainMean = n ? `${(total / n).toFixed(2)} bits` : 'not measured';
     const avg = off ? `average surprise ≥ ${bounded == null ? '?' : bounded.toFixed(2)} bits, counting each off-scale piece at its floor (${plainMean} over the ${n} piece${n === 1 ? '' : 's'} it ranked in its top 20) · ${off} off scale (hatched)` : `average surprise ${plainMean} (all ${n} in its top 20)`;
-    keptStatus('readStat', `${sc.length} pieces scored · ${avg}${clipped ? ` · ${clipped} past the colour scale (${READ_CLIP} bits, marked ▴)` : ''}`, off ? 'warn' : 'ok', info);
+    keptStatus('readStat', `${sc.length - unrep} pieces scored · ${avg}${clipped ? ` · ${clipped} past the colour scale (${READ_CLIP} bits, marked ▴)` : ''}${unrep ? ` · ${unrep} not scored (no odds reported where the likeliest next piece is part of a character)` : ''}`, off ? 'warn' : 'ok', info);
     const bos = info.restored ? null : kvOf('tokenizer.ggml.add_bos_token');
     PSI.cond(rowOf('readGo'), [...(info.restored ? [{ t: 'kept from before: read by the model loaded then', title: 'A reading kept across a reload or from another device; the model loaded now may differ' }] : localParts()), 'no lens: the text is read as it is',
       info.restored ? { t: 'no BOS', title: 'The text is read as written, with no beginning-of-text token in front: the first piece is not scored' } : { t: bos ? 'no BOS: read without the beginning-of-text token this model expects first' : 'no BOS (this model adds none)', title: 'The text is read as written, with no beginning-of-text token in front: the first piece is not scored, and the next few can read more surprised than in a model-formatted prompt' },
