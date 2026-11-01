@@ -78,7 +78,7 @@ in an empty folder, suggest that one for PSI):
 
 STEP 3: THE BASICS (only what is missing)
 - git.
-- Node.js 22.12 or newer (the LTS version; Electron needs it): from nodejs.org, or winget install OpenJS.NodeJS.LTS on Windows,
+- Node.js 22.23.4, 24.22.1 or 26.12.1 or later in its line (the releases that fix the Brotli flaw CVE-2026-111497; the LTS version is fine once updated): from nodejs.org, or winget install OpenJS.NodeJS.LTS on Windows,
   brew install node on a Mac, or the NodeSource packages on Linux. Without Homebrew or administrator rights, the
   nodejs.org .tar.gz (Mac, Linux) or .zip (Windows) unpacked into a folder in my home folder works; use its bin
   folder for this session only.

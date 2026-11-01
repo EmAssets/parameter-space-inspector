@@ -45,13 +45,18 @@ MAX_PIECES, MAX_FULL, MAX_PAPERS, MAX_OPTIONS, MAX_PHRASINGS, MAX_EXCHANGES = 8,
 MAX_CHARS, MAX_TOKENS = 40000, 8192   # all pieces together, and one paper as the model reads it (or the model's own window, if smaller)
 
 
+def _text(t):
+    """A value as text: a number (0 included) is its digits; any other empty value (None, False, []) is nothing, as before."""
+    return str(t) if isinstance(t, (int, float)) and not isinstance(t, bool) else str(t or "")
+
+
 def _flat(t, n):
-    return re.sub(r"\s+", " ", str(t or "")).strip()[:n]
+    return re.sub(r"\s+", " ", _text(t)).strip()[:n]
 
 
 def _lines(t, n):
-    """_flat that keeps line breaks: a turn's reply can be a list, and its lines are what the model reads."""
-    t = "\n".join(re.sub(r"[^\S\n]+", " ", ln).strip() for ln in str(t or "").replace("\r\n", "\n").split("\n"))
+    """_flat that keeps line breaks: a question with lettered options, a pasted document or a turn's reply is read line by line."""
+    t = "\n".join(re.sub(r"[^\S\n]+", " ", ln).strip() for ln in _text(t).replace("\r\n", "\n").split("\n"))
     return re.sub(r"\n{3,}", "\n\n", t).strip()[:n]
 
 
@@ -70,7 +75,7 @@ def _clean_pieces(pieces):
             if any(not (u and a) for u, a in ex): raise ValueError("context: a turn piece needs both the user's text and the assistant's reply")
             if ex: out.append({"role": "turn", "text": ex[0][0], "reply": ex[0][1], **({"exchanges": ex} if len(ex) > 1 else {})})
             continue
-        text = _flat(p.get("text", ""), 600)
+        text = _lines(p.get("text", ""), 600)   # a pasted document or a list keeps its lines: they are what the model reads
         if text: out.append({"role": role, "text": text})
     size = sum(len(p["text"]) + len(p.get("reply", "")) + sum(len(u) + len(a) for u, a in p.get("exchanges", [])[1:]) for p in out)
     if size > MAX_CHARS: raise ValueError(f"context: the pieces hold {size:,} characters together; up to {MAX_CHARS:,}")
@@ -105,12 +110,24 @@ def _clean_options(options):
     return out
 
 
+def join(parts, keep=None):
+    """Parts of one message, in order: a space between one-line parts (a one-line tip before a question with lettered
+    options stays on the question's first line, as typed), a blank line on each side of a part that has lines of its own.
+    `keep` is the index of a part (the question) whose own lines never call for the blank line."""
+    out = ""
+    for i, t in enumerate(parts):
+        if i: out += "\n\n" if any("\n" in parts[j] and j != keep for j in (i - 1, i)) else " "
+        out += t
+    return out
+
+
 def messages(question, pieces, on):
     """The paper as chat messages. on: one 0/1 per piece. Turns that are on become the chat's history, in order."""
     use = [p for p, k in zip(pieces, on) if int(k)]
-    sys_txt = " ".join(p["text"] for p in use if p["role"] == "system")
+    sys_txt = join([p["text"] for p in use if p["role"] == "system"])
     hist = [m for p in use if p["role"] == "turn" for u, a in exchanges(p) for m in ({"role": "user", "content": u}, {"role": "assistant", "content": a})]
-    user = " ".join([p["text"] for p in use if p["role"] in ("premise", "claim", "evidence")] + [question] + [p["text"] for p in use if p["role"] == "instruction"])
+    before = [p["text"] for p in use if p["role"] in ("premise", "claim", "evidence")]
+    user = join(before + [question] + [p["text"] for p in use if p["role"] == "instruction"], keep=len(before))
     return ([{"role": "system", "content": sys_txt}] if sys_txt else []) + hist + [{"role": "user", "content": user}]
 
 
@@ -202,7 +219,7 @@ class ContextLab:
 
     # ── the factorial run ──────────────────────────────────────────────────────────────────────────────────────────
     def run(self, question, pieces, options=None, frame="", n_new=96, top=8, arms=None):
-        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]
+        question = _lines(question, 1000)
         if not question: raise ValueError("context: question is required")
         pieces, options, frame = _clean_pieces(pieces), _clean_options(options), str(frame or "")[:200]
         n_new, top = max(8, min(256, int(n_new))), max(3, min(20, int(top)))
@@ -268,7 +285,7 @@ class ContextLab:
 
     @torch.no_grad()
     def rollout(self, question, pieces, keys, options, frame="", turns=None, n=6, n_new=64, correct=None, rut=None, names=None):
-        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; pieces = _clean_pieces(pieces)
+        question = _lines(question, 1000); pieces = _clean_pieces(pieces)
         options, frame = _clean_options(options), str(frame or "")[:200]
         if not question: raise ValueError("context: question is required")
         if len(options) < 2: raise ValueError("context: rollout needs at least two named answers (the correct one and the rut)")
@@ -278,7 +295,7 @@ class ContextLab:
         names = names if isinstance(names, dict) else {}
         correct = str(correct) if correct in options else list(options)[0]
         rut = str(rut) if rut in options and rut != correct else [o for o in options if o != correct][0]
-        turns = [_flat(t, 1000) for t in (turns or []) if _flat(t, 1000)]
+        turns = [_lines(t, 1000) for t in (turns or []) if _lines(t, 1000)]
         if len(turns) > 24: raise ValueError(f"context: up to 24 user turns (got {len(turns)})")
         n, n_new = max(1, min(12, int(n))), max(8, min(160, int(n_new)))
         tok, arms = self.t.tok, []
@@ -304,7 +321,7 @@ class ContextLab:
     # ── two papers, one answer ─────────────────────────────────────────────────────────────────────────────────────
     @torch.no_grad()
     def diverge(self, question, pieces, a, b, text=None, n=12):
-        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; pieces = _clean_pieces(pieces)
+        question = _lines(question, 1000); pieces = _clean_pieces(pieces)
         a, b = str(a), str(b)
         if not question: raise ValueError("context: question is required")
         if not (len(a) == len(b) == len(pieces) and set(a + b) <= {"0", "1"}): raise ValueError(f"context: a and b are one 0/1 per piece ({len(pieces)} pieces)")
@@ -327,7 +344,7 @@ class ContextLab:
     # ── the paths ──────────────────────────────────────────────────────────────────────────────────────────────────
     @torch.no_grad()
     def tree(self, question, pieces, key, show=6, expand=3, depth=3, leaf_new=30):
-        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; pieces = _clean_pieces(pieces); key = str(key)
+        question = _lines(question, 1000); pieces = _clean_pieces(pieces); key = str(key)
         if not question: raise ValueError("context: question is required")
         if not (len(key) == len(pieces) and set(key) <= {"0", "1"}): raise ValueError(f"context: key is one 0/1 per piece ({len(pieces)} pieces)")
         show, expand, depth, leaf_new = max(2, min(10, int(show))), max(1, min(4, int(expand))), max(1, min(4, int(depth))), max(0, min(80, int(leaf_new)))

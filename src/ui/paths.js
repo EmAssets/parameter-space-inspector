@@ -76,13 +76,27 @@ window.PSIPaths = (() => {
       mark: new Set(best.at.flatMap((i) => Array.from({ length: n }, (_, k) => i + k))) };
   }
 
-  // Cluster sampled continuations by their opening words (the first ~8 content words).
+  // Cluster sampled continuations by their opening words (the first ~8 content words: Latin words of 4+ letters). A text
+  // with no content word (an answer of "42", "7", "No", a word in another script) is keyed by all its words instead,
+  // numbers kept whole ("-42", "3.14", "40,000"), and matches only a text with the very same words, so "42" and "-42",
+  // "42" and "42, or 7" stay apart; two texts with no word at all match when they are the same. (Keyed by content words
+  // alone, every "42" was a cluster of its own: the key was empty and matched nothing.) Numbers still play no part in a
+  // content-word key: "The answer is 42" and "The answer is 7" group together, as before.
   function cluster(samples, span = 8) {
-    const key = (t) => words(t).slice(0, span);
+    const key = (t) => {
+      const c = words(t).slice(0, span);
+      return c.length ? { all: false, w: c } : { all: true, w: (String(t).toLowerCase().match(/-?\p{N}+(?:[.,]\p{N}+)*|[\p{L}\p{N}]+/gu) || []).slice(0, span), text: String(t).trim() };
+    };
+    const same = (x, y) => {
+      if (x.all !== y.all) return false;
+      if (x.all) return x.w.length ? x.w.join(' ') === y.w.join(' ') : !y.w.length && x.text === y.text;
+      const a = new Set(x.w), b = new Set(y.w); const inter = [...a].filter((w) => b.has(w)).length;
+      return inter / Math.min(a.size, b.size) >= 0.6;
+    };
     const groups = [];
     for (const s of samples) {
       const k = key(s.text);
-      let g = groups.find((x) => { const a = new Set(x.key), b = new Set(k); const inter = [...a].filter((w) => b.has(w)).length; return inter / Math.max(1, Math.min(a.size, b.size)) >= 0.6; });
+      let g = groups.find((x) => same(x.key, k));
       if (!g) { g = { key: k, members: [] }; groups.push(g); }
       g.members.push(s);
     }

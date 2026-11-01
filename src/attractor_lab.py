@@ -35,7 +35,7 @@ MAX_PAIRS, MAX_PROMPTS, MAX_DIRS = 64, 32, 32
 
 
 def _clean_texts(xs, what, lo=2):
-    out = [re.sub(r"\s+", " ", str(x)).strip()[:600] for x in (xs or []) if str(x).strip()][:MAX_PAIRS]
+    out = [context_mod._lines(x, 600) for x in (xs or []) if str(x).strip()][:MAX_PAIRS]
     if len(out) < lo: raise ValueError(f"attractor: {what} needs at least {lo} texts")
     return out
 
@@ -45,7 +45,7 @@ def _history(history, lo=0):
     out = []
     for m in (history or [])[:24]:
         if not isinstance(m, dict): continue
-        r, c = str(m.get("role", "user")), re.sub(r"\s+", " ", str(m.get("content", ""))).strip()[:2000]
+        r, c = str(m.get("role", "user")), context_mod._lines(m.get("content", ""), 2000)
         if r in ("system", "user", "assistant") and c: out.append({"role": r, "content": c})
     if len(out) < lo: raise ValueError(f"attractor: history needs at least {lo} turns")
     return out
@@ -161,7 +161,7 @@ class AttractorLab(context_mod.ContextLab):
 
     @torch.no_grad()
     def funnel(self, question, options=None, k=8, points=10, n_new=40, temperature=1.0, history=None):
-        question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; hist = _history(history)
+        question = context_mod._lines(question, 1000); hist = _history(history)
         if not question: raise ValueError("attractor: question is required")
         options = context_mod._clean_options(options)
         k, points, n_new = max(2, min(24, int(k))), max(2, min(24, int(points))), max(8, min(128, int(n_new)))
@@ -209,9 +209,9 @@ class AttractorLab(context_mod.ContextLab):
 
     @torch.no_grad()
     def path(self, name, question, options, frame="", target=None, max_strength=4.0, steps=5, n_new=32, pieces=None, control=True, history=None, turns=None, strengths=None):
-        D = self._dir(name); question = re.sub(r"\s+", " ", str(question or "")).strip()[:1000]; hist0 = _history(history)
+        D = self._dir(name); question = context_mod._lines(question, 1000); hist0 = _history(history)
         # turns: the user's text at each step (the last one repeats); strengths: an explicit list in place of the up-and-down sweep.
-        turns = [re.sub(r"\s+", " ", str(t)).strip()[:1000] for t in (turns or []) if str(t).strip()][:33]
+        turns = [context_mod._lines(t, 1000) for t in (turns or []) if str(t).strip()][:33]
         explicit = [max(-12.0, min(12.0, float(s))) for s in (strengths or [])][:33] if isinstance(strengths, list) else None
         options = context_mod._clean_options(options); frame = str(frame or "")[:200]
         if not question: raise ValueError("attractor: question is required")
@@ -296,14 +296,14 @@ class AttractorLab(context_mod.ContextLab):
     @torch.no_grad()
     def constraint(self, name, prompts, frame, as_role="system", strength=1.0, history=None):
         D = self._dir(name); prompts = _clean_texts(prompts, "prompts", 4)[:MAX_PROMPTS]; hist = _history(history)
-        frame = re.sub(r"\s+", " ", str(frame or "")).strip()[:1000]
+        frame = context_mod._lines(frame, 1000)
         if not frame: raise ValueError("attractor: frame (the constraint) is required")
         l = D["layer"]; gap = abs(D["gaps"][l]); a = max(0.1, min(12.0, float(strength)))
         g = torch.Generator().manual_seed(2); rnd = torch.randn(D["vecs"][l].shape, generator=g).to(self.t.device); rnd = rnd / rnd.norm()
 
         def msgs(p, on):   # the history (if any) sits between the system frame and the prompt, on both sides
             if not on: return hist + [{"role": "user", "content": p}]
-            return [{"role": "system", "content": frame}] + hist + [{"role": "user", "content": p}] if as_role == "system" else hist + [{"role": "user", "content": f"{frame} {p}"}]
+            return [{"role": "system", "content": frame}] + hist + [{"role": "user", "content": p}] if as_role == "system" else hist + [{"role": "user", "content": context_mod.join([frame, p], keep=1)}]
 
         def kl(p, q): return float((p * (torch.log(p + 1e-12) - torch.log(q + 1e-12))).sum())
 
